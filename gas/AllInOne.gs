@@ -2,9 +2,16 @@
 // Config.gs - 設定ファイル
 // ============================================================
 
+// ⚠️⚠️⚠️ ここにOpenAI APIキーを直接貼り付けてください ⚠️⚠️⚠️
+// 例: const OPENAI_API_KEY_HARDCODED = 'sk-proj-xxxxxxxx...';
+// セキュリティのため、このキーが入ったコードはGitHubにpushしないでください！
+const OPENAI_API_KEY_HARDCODED = 'YOUR_API_KEY_HERE';
+
 const CONFIG = {
-  // OpenAI API
-  OPENAI_API_KEY: PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY'),
+  // OpenAI API（直書きキー優先、無ければスクリプトプロパティを参照）
+  OPENAI_API_KEY: (OPENAI_API_KEY_HARDCODED && OPENAI_API_KEY_HARDCODED !== 'YOUR_API_KEY_HERE')
+    ? OPENAI_API_KEY_HARDCODED
+    : PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY'),
   OPENAI_CHAT_ENDPOINT: 'https://api.openai.com/v1/chat/completions',
   OPENAI_IMAGE_ENDPOINT: 'https://api.openai.com/v1/images/generations',
 
