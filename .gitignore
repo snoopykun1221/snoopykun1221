@@ -1,0 +1,7 @@
+.env
+follow_state.json
+fx_follow.log
+__pycache__/
+*.pyc
+.venv/
+venv/
