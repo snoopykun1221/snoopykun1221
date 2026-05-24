@@ -1,5 +1,5 @@
 #!/bin/bash
-# FX Auto Follow Bot セットアップスクリプト
+# FX Auto Follow Bot セットアップスクリプト (Playwright版)
 
 set -e
 
@@ -12,12 +12,15 @@ source .venv/bin/activate
 # 依存パッケージインストール
 pip install -r requirements.txt
 
+# Playwright ブラウザ (Chromium) インストール
+playwright install chromium
+
 # .env ファイル確認
 if [ ! -f .env ]; then
     cp .env.example .env
     echo ""
     echo "⚠️  .env ファイルを作成しました。"
-    echo "   .env を編集してAPIキーを設定してください。"
+    echo "   .env を編集してXのログイン情報を設定してください。"
     echo ""
 fi
 
@@ -25,7 +28,6 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CRON_JOB="0 9 * * * cd $SCRIPT_DIR && $SCRIPT_DIR/.venv/bin/python fx_auto_follow.py >> fx_follow.log 2>&1"
 
-# 既存のcronに追加されていない場合のみ追加
 if crontab -l 2>/dev/null | grep -q "fx_auto_follow.py"; then
     echo "cron ジョブはすでに設定済みです。"
 else
