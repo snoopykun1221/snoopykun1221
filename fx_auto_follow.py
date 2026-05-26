@@ -122,7 +122,7 @@ async def follow_wait() -> None:
 
 async def login(page: Page) -> bool:
     logger.info("ログイン開始...")
-    await page.goto("https://x.com/login", wait_until="networkidle")
+    await page.goto("https://x.com/login", wait_until="domcontentloaded", timeout=60000)
     await human_wait()
 
     # ユーザー名入力
