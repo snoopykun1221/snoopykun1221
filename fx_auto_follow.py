@@ -124,17 +124,22 @@ async def login(page: Page) -> bool:
     logger.info("ログイン開始...")
     await page.goto("https://x.com/login", wait_until="load", timeout=60000)
     await asyncio.sleep(4)
-    await page.screenshot(path="login_debug.png")
     logger.info(f"ページURL: {page.url}")
 
     # ユーザー名入力
     try:
         await page.wait_for_selector('input', timeout=20000)
         username_input = page.locator('input[name="text"], input[autocomplete="username"], input[type="text"]').first
-        await username_input.wait_for(timeout=20000)
+        await username_input.wait_for(state="visible", timeout=20000)
+        await username_input.click()
         await username_input.fill(X_USERNAME)
         await human_wait()
-        await page.keyboard.press("Enter")
+        # 「次へ」ボタンをクリック
+        next_btn = page.locator('button[data-testid="LoginForm_Login_Button"], button:has-text("Next"), button:has-text("次へ")').first
+        if await next_btn.count() > 0:
+            await next_btn.click()
+        else:
+            await page.keyboard.press("Enter")
         await human_wait(2, 4)
     except PlaywrightTimeout:
         logger.error("ユーザー名入力欄が見つかりません。")
@@ -154,19 +159,25 @@ async def login(page: Page) -> bool:
 
     # パスワード入力
     try:
-        password_input = page.locator('input[name="password"]').last
-        await password_input.wait_for(timeout=10000)
+        password_input = page.locator('input[name="password"][aria-hidden="false"], input[name="password"]').first
+        await password_input.wait_for(state="visible", timeout=15000)
+        await password_input.click()
         await password_input.fill(X_PASSWORD)
         await human_wait()
-        await page.keyboard.press("Enter")
-        await page.wait_for_load_state("load", timeout=15000)
-        await human_wait(2, 4)
+        # 「ログイン」ボタンをクリック
+        login_btn = page.locator('button[data-testid="LoginForm_Login_Button"], button:has-text("Log in"), button:has-text("ログイン")').first
+        if await login_btn.count() > 0:
+            await login_btn.click()
+        else:
+            await page.keyboard.press("Enter")
+        await asyncio.sleep(5)
     except PlaywrightTimeout:
         logger.error("パスワード入力欄が見つかりません。")
         return False
 
     # ログイン成功確認
-    if "home" in page.url or "x.com/" in page.url and "login" not in page.url:
+    logger.info(f"ログイン後URL: {page.url}")
+    if "home" in page.url or ("x.com" in page.url and "login" not in page.url and "onboarding" not in page.url):
         logger.info("ログイン成功。")
         return True
 
