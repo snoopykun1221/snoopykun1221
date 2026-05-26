@@ -127,8 +127,9 @@ async def login(page: Page) -> bool:
 
     # ユーザー名入力
     try:
-        username_input = page.locator('input[name="text"], input[autocomplete="username"]').first
-        await username_input.wait_for(timeout=15000)
+        await page.wait_for_selector('input', timeout=20000)
+        username_input = page.locator('input[name="text"], input[autocomplete="username"], input[type="text"]').first
+        await username_input.wait_for(timeout=20000)
         await username_input.fill(X_USERNAME)
         await human_wait()
         await page.keyboard.press("Enter")
