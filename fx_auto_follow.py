@@ -122,8 +122,8 @@ async def follow_wait() -> None:
 
 async def login(page: Page) -> bool:
     logger.info("ログイン開始...")
-    await page.goto("https://x.com/login", wait_until="domcontentloaded", timeout=60000)
-    await human_wait()
+    await page.goto("https://x.com/login", wait_until="load", timeout=60000)
+    await asyncio.sleep(4)
 
     # ユーザー名入力
     try:
