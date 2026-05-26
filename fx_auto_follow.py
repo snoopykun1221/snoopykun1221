@@ -154,12 +154,12 @@ async def login(page: Page) -> bool:
 
     # パスワード入力
     try:
-        password_input = page.locator('input[name="password"]')
+        password_input = page.locator('input[name="password"]').last
         await password_input.wait_for(timeout=10000)
         await password_input.fill(X_PASSWORD)
         await human_wait()
         await page.keyboard.press("Enter")
-        await page.wait_for_load_state("networkidle", timeout=15000)
+        await page.wait_for_load_state("load", timeout=15000)
         await human_wait(2, 4)
     except PlaywrightTimeout:
         logger.error("パスワード入力欄が見つかりません。")
