@@ -188,7 +188,7 @@ async def login(page: Page) -> bool:
 
 async def is_logged_in(page: Page) -> bool:
     """ログイン済みかどうか確認"""
-    await page.goto("https://x.com/home", wait_until="networkidle", timeout=20000)
+    await page.goto("https://x.com/home", wait_until="load", timeout=30000)
     await human_wait()
     return "login" not in page.url
 
