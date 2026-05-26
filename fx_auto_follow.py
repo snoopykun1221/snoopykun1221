@@ -159,18 +159,19 @@ async def login(page: Page) -> bool:
 
     # パスワード入力
     try:
-        password_input = page.locator('input[name="password"][aria-hidden="false"], input[name="password"]').first
-        await password_input.wait_for(state="visible", timeout=15000)
-        await password_input.click()
+        await asyncio.sleep(3)
+        await page.wait_for_selector('input[type="password"]', timeout=15000)
+        await asyncio.sleep(1)
+        password_inputs = await page.locator('input[type="password"]').all()
+        logger.info(f"パスワード入力欄の数: {len(password_inputs)}")
+        password_input = page.locator('input[type="password"]').last
+        await password_input.scroll_into_view_if_needed()
+        await password_input.click(force=True)
         await password_input.fill(X_PASSWORD)
+        logger.info("パスワード入力完了")
         await human_wait()
-        # 「ログイン」ボタンをクリック
-        login_btn = page.locator('button[data-testid="LoginForm_Login_Button"], button:has-text("Log in"), button:has-text("ログイン")').first
-        if await login_btn.count() > 0:
-            await login_btn.click()
-        else:
-            await page.keyboard.press("Enter")
-        await asyncio.sleep(5)
+        await page.keyboard.press("Enter")
+        await asyncio.sleep(6)
     except PlaywrightTimeout:
         logger.error("パスワード入力欄が見つかりません。")
         return False
