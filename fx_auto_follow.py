@@ -212,7 +212,7 @@ async def collect_users_from_search(
     url = f"https://x.com/search?q={query}&src=typed_query&f=live"
 
     logger.info(f"検索: [{keyword}]")
-    await page.goto(url, wait_until="networkidle", timeout=20000)
+    await page.goto(url, wait_until="load", timeout=30000)
     await human_wait(2, 4)
 
     # スクロールしてツイートを読み込む
