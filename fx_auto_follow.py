@@ -133,6 +133,7 @@ async def login(page: Page) -> bool:
         await username_input.wait_for(state="visible", timeout=20000)
         await username_input.click()
         await username_input.fill(X_USERNAME)
+        logger.info("ユーザー名入力完了")
         await human_wait()
         # 「次へ」ボタンをクリック
         next_btn = page.locator('button[data-testid="LoginForm_Login_Button"], button:has-text("Next"), button:has-text("次へ")').first
@@ -140,7 +141,13 @@ async def login(page: Page) -> bool:
             await next_btn.click()
         else:
             await page.keyboard.press("Enter")
-        await human_wait(2, 4)
+        # パスワード画面に遷移するまで待機
+        try:
+            await page.wait_for_url("**/login_enter_password**", timeout=10000)
+        except PlaywrightTimeout:
+            pass
+        await asyncio.sleep(3)
+        logger.info(f"ユーザー名後URL: {page.url}")
     except PlaywrightTimeout:
         logger.error("ユーザー名入力欄が見つかりません。")
         return False
@@ -155,17 +162,15 @@ async def login(page: Page) -> bool:
         await email_input.fill(X_EMAIL)
         await human_wait()
         await page.keyboard.press("Enter")
-        await human_wait(2, 4)
+        await asyncio.sleep(3)
 
     # パスワード入力
     try:
-        await asyncio.sleep(3)
         await page.wait_for_selector('input[type="password"]', timeout=15000)
         await asyncio.sleep(1)
         password_inputs = await page.locator('input[type="password"]').all()
         logger.info(f"パスワード入力欄の数: {len(password_inputs)}")
         password_input = page.locator('input[type="password"]').last
-        await password_input.scroll_into_view_if_needed()
         await password_input.click(force=True)
         await password_input.fill(X_PASSWORD)
         logger.info("パスワード入力完了")
