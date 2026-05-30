@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行く？行かない？ ルーレット</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  h1 {
+    font-size: 2rem;
+    letter-spacing: 0.2em;
+    margin-bottom: 2rem;
+    text-shadow: 0 0 20px rgba(255,255,255,0.4);
+    z-index: 1;
+  }
+
+  .wheel-wrapper {
+    position: relative;
+    width: 340px;
+    height: 340px;
+    z-index: 1;
+  }
+
+  canvas#wheel {
+    border-radius: 50%;
+    box-shadow: 0 0 40px rgba(255,255,255,0.15), 0 0 80px rgba(100,100,255,0.1);
+    display: block;
+  }
+
+  /* Arrow pointer */
+  .pointer {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+    border-top: 36px solid #FFD700;
+    filter: drop-shadow(0 0 8px #FFD700);
+    z-index: 10;
+  }
+
+  /* Center button on wheel */
+  .center-btn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0%, #ccc 100%);
+    border: 4px solid #888;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #333;
+    letter-spacing: 0.05em;
+    z-index: 10;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    transition: transform 0.1s, box-shadow 0.1s;
+    user-select: none;
+  }
+  .center-btn:hover { transform: translate(-50%, -50%) scale(1.05); }
+  .center-btn:active { transform: translate(-50%, -50%) scale(0.95); }
+  .center-btn.spinning { cursor: not-allowed; opacity: 0.6; }
+
+  /* Big spin button below */
+  #spinBtn {
+    margin-top: 2.5rem;
+    padding: 1rem 3.5rem;
+    font-size: 1.3rem;
+    font-weight: bold;
+    letter-spacing: 0.15em;
+    border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #6c63ff, #e040fb);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 25px rgba(108, 99, 255, 0.6);
+    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+    z-index: 1;
+    position: relative;
+  }
+  #spinBtn:hover { transform: scale(1.05); box-shadow: 0 6px 35px rgba(108,99,255,0.8); }
+  #spinBtn:active { transform: scale(0.97); }
+  #spinBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* Result overlay */
+  #result {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #result.show { opacity: 1; pointer-events: auto; }
+
+  #result-bg {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+
+  #result-text {
+    font-size: 7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 40px currentColor;
+    transform: scale(0);
+    transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.5);
+    z-index: 1;
+    position: relative;
+  }
+  #result-text.pop { transform: scale(1); }
+
+  #result-sub {
+    font-size: 1.4rem;
+    margin-top: 1rem;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.4s 0.3s, transform 0.4s 0.3s;
+    z-index: 1;
+    position: relative;
+    letter-spacing: 0.1em;
+  }
+  #result-sub.show { opacity: 1; transform: translateY(0); }
+
+  #retry-btn {
+    margin-top: 2.5rem;
+    padding: 0.8rem 2.5rem;
+    font-size: 1rem;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    border: 2px solid rgba(255,255,255,0.6);
+    border-radius: 50px;
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.4s 0.6s, transform 0.4s 0.6s, background 0.2s;
+    z-index: 1;
+    position: relative;
+  }
+  #retry-btn.show { opacity: 1; transform: translateY(0); }
+  #retry-btn:hover { background: rgba(255,255,255,0.25); }
+
+  /* Confetti canvas */
+  #confetti {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99;
+  }
+
+  /* Flash overlay */
+  #flash {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 98;
+    opacity: 0;
+    transition: opacity 0.05s;
+  }
+
+  /* Glow ring pulse */
+  @keyframes ring-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(108,99,255,0.7); }
+    70% { box-shadow: 0 0 0 20px rgba(108,99,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(108,99,255,0); }
+  }
+  .pulse { animation: ring-pulse 0.6s ease-out; }
+
+  /* Shake */
+  @keyframes shake {
+    0%,100% { transform: translate(0,0) rotate(0deg); }
+    10% { transform: translate(-8px,4px) rotate(-1deg); }
+    20% { transform: translate(8px,-4px) rotate(1deg); }
+    30% { transform: translate(-6px,6px) rotate(-0.5deg); }
+    40% { transform: translate(6px,-6px) rotate(0.5deg); }
+    50% { transform: translate(-4px,4px) rotate(-1deg); }
+    60% { transform: translate(4px,-4px) rotate(1deg); }
+    70% { transform: translate(-2px,2px) rotate(0deg); }
+    80% { transform: translate(2px,-2px) rotate(0deg); }
+    90% { transform: translate(-1px,1px) rotate(0deg); }
+  }
+  .shake { animation: shake 0.5s ease-out; }
+</style>
+</head>
+<body>
+
+<h1>🎰 行く？行かない？</h1>
+
+<div class="wheel-wrapper" id="wheelWrapper">
+  <div class="pointer"></div>
+  <canvas id="wheel" width="340" height="340"></canvas>
+  <button class="center-btn" id="centerBtn">SPIN!</button>
+</div>
+
+<button id="spinBtn">🎲 ルーレットを回す！</button>
+
+<!-- Flash overlay -->
+<div id="flash"></div>
+
+<!-- Confetti canvas -->
+<canvas id="confetti"></canvas>
+
+<!-- Result overlay -->
+<div id="result">
+  <div id="result-bg"></div>
+  <div id="result-text"></div>
+  <div id="result-sub"></div>
+  <button id="retry-btn">もう一度 🔄</button>
+</div>
+
+<script>
+const canvas = document.getElementById('wheel');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height, CX = W/2, CY = H/2, R = W/2 - 4;
+
+const segments = [
+  { label: '行く',    color: '#1e8449', textColor: '#fff' },
+  { label: '行かない', color: '#922b21', textColor: '#fff' },
+  { label: '行く',    color: '#117a65', textColor: '#fff' },
+  { label: '行かない', color: '#c0392b', textColor: '#fff' },
+  { label: '行く',    color: '#196f3d', textColor: '#fff' },
+  { label: '行かない', color: '#a93226', textColor: '#fff' },
+  { label: '行く',    color: '#0e6655', textColor: '#fff' },
+  { label: '行かない', color: '#b03a2e', textColor: '#fff' },
+];
+
+const N = segments.length;
+const slice = (2 * Math.PI) / N;
+
+let angle = 0;
+let spinning = false;
+
+function drawWheel(rot) {
+  ctx.clearRect(0, 0, W, H);
+
+  for (let i = 0; i < N; i++) {
+    const start = rot + i * slice;
+    const end   = start + slice;
+    const seg   = segments[i];
+
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.arc(CX, CY, R, start, end);
+    ctx.closePath();
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(CX, CY);
+    ctx.rotate(start + slice / 2);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = seg.textColor;
+    ctx.font = `bold ${seg.label === '行く' ? 22 : 16}px sans-serif`;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(seg.label, R - 16, 7);
+    ctx.restore();
+  }
+
+  ctx.beginPath();
+  ctx.arc(CX, CY, R, 0, 2*Math.PI);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  const grad = ctx.createRadialGradient(CX, CY, R*0.3, CX, CY, R);
+  grad.addColorStop(0, 'rgba(0,0,0,0.15)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.beginPath();
+  ctx.arc(CX, CY, R, 0, 2*Math.PI);
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+drawWheel(angle);
+
+function getRandomBytes() {
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  return arr[0] / 0xFFFFFFFF;
+}
+
+function spin() {
+  if (spinning) return;
+  spinning = true;
+
+  document.getElementById('spinBtn').disabled = true;
+  document.getElementById('centerBtn').classList.add('spinning');
+
+  const outcome = getRandomBytes() < 0.5 ? '行く' : '行かない';
+
+  const matching = segments
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => s.label === outcome);
+  const winner = matching[Math.floor(getRandomBytes() * matching.length)];
+  const winIndex = winner.i;
+
+  const targetRot = -Math.PI/2 - winIndex*slice - slice/2;
+  const fullSpins = 5 + Math.floor(getRandomBytes() * 5);
+  const endAngle = angle + fullSpins * 2 * Math.PI + ((targetRot - angle) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI);
+
+  const duration = 3500 + getRandomBytes() * 1500;
+  const startAngle = angle;
+  const startTime = performance.now();
+  let lastTickIndex = -1;
+
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function step(now) {
+    const elapsed = now - startTime;
+    let t = Math.min(elapsed / duration, 1);
+    const easedT = easeOut(t);
+
+    angle = startAngle + (endAngle - startAngle) * easedT;
+    drawWheel(angle);
+
+    const curIndex = Math.floor(((angle % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI) / slice);
+    if (curIndex !== lastTickIndex) {
+      lastTickIndex = curIndex;
+      tickEffect();
+    }
+
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      angle = endAngle;
+      drawWheel(angle);
+      spinning = false;
+      document.getElementById('spinBtn').disabled = false;
+      document.getElementById('centerBtn').classList.remove('spinning');
+      showResult(outcome);
+    }
+  }
+
+  requestAnimationFrame(step);
+}
+
+function tickEffect() {
+  const flash = document.getElementById('flash');
+  flash.style.background = 'rgba(255,255,255,0.08)';
+  flash.style.opacity = '1';
+  setTimeout(() => { flash.style.opacity = '0'; }, 60);
+}
+
+document.getElementById('spinBtn').addEventListener('click', spin);
+document.getElementById('centerBtn').addEventListener('click', spin);
+
+function showResult(outcome) {
+  const isGo = outcome === '行く';
+  const resultEl   = document.getElementById('result');
+  const bgEl       = document.getElementById('result-bg');
+  const textEl     = document.getElementById('result-text');
+  const subEl      = document.getElementById('result-sub');
+  const retryBtn   = document.getElementById('retry-btn');
+
+  if (isGo) {
+    textEl.textContent = '行く！🎉';
+    textEl.style.color = '#2ecc71';
+    bgEl.style.background = 'radial-gradient(ellipse at center, rgba(39,174,96,0.35) 0%, rgba(0,0,0,0.92) 70%)';
+    subEl.textContent = '決まり！！行こう！！🚀';
+  } else {
+    textEl.textContent = '行かない 😭';
+    textEl.style.color = '#e74c3c';
+    bgEl.style.background = 'radial-gradient(ellipse at center, rgba(192,57,43,0.4) 0%, rgba(0,0,0,0.95) 70%)';
+    subEl.textContent = '残念...今回はやめておこう。';
+  }
+
+  resultEl.classList.add('show');
+  bgEl.style.opacity = '1';
+
+  const flash = document.getElementById('flash');
+  flash.style.background = isGo ? 'rgba(46,204,113,0.6)' : 'rgba(231,76,60,0.5)';
+  flash.style.opacity = '1';
+  setTimeout(() => { flash.style.opacity = '0'; }, 150);
+
+  setTimeout(() => {
+    document.getElementById('wheelWrapper').classList.add('shake');
+    document.getElementById('wheelWrapper').addEventListener('animationend', () => {
+      document.getElementById('wheelWrapper').classList.remove('shake');
+    }, { once: true });
+  }, 100);
+
+  setTimeout(() => {
+    textEl.classList.add('pop');
+    subEl.classList.add('show');
+    retryBtn.classList.add('show');
+  }, 200);
+
+  if (isGo) {
+    setTimeout(() => launchConfetti(), 250);
+  } else {
+    setTimeout(() => launchDark(), 250);
+  }
+}
+
+document.getElementById('retry-btn').addEventListener('click', () => {
+  const resultEl = document.getElementById('result');
+  const bgEl     = document.getElementById('result-bg');
+  const textEl   = document.getElementById('result-text');
+  const subEl    = document.getElementById('result-sub');
+  const retryBtn = document.getElementById('retry-btn');
+
+  resultEl.classList.remove('show');
+  bgEl.style.opacity = '0';
+  textEl.classList.remove('pop');
+  subEl.classList.remove('show');
+  retryBtn.classList.remove('show');
+
+  stopConfetti();
+});
+
+const confCanvas = document.getElementById('confetti');
+const confCtx    = confCanvas.getContext('2d');
+let particles = [];
+let animId = null;
+
+function resizeConf() {
+  confCanvas.width  = window.innerWidth;
+  confCanvas.height = window.innerHeight;
+}
+resizeConf();
+window.addEventListener('resize', resizeConf);
+
+function makeParticle(mode) {
+  const x = Math.random() * confCanvas.width;
+  const y = mode === 'go' ? -20 : confCanvas.height + 20;
+  const vy = mode === 'go'
+    ? 2 + Math.random() * 5
+    : -(2 + Math.random() * 5);
+  const colors = mode === 'go'
+    ? ['#FFD700','#FF6B6B','#4ECDC4','#45B7D1','#96E6A1','#FFEAA7','#DDA0DD','#98FB98']
+    : ['#2c2c2c','#4a4a4a','#1a1a2e','#16213e','#555'];
+  return {
+    x, y, vx: (Math.random()-0.5)*4,
+    vy, vy0: vy,
+    size: 6 + Math.random()*10,
+    color: colors[Math.floor(Math.random()*colors.length)],
+    rot: Math.random()*Math.PI*2,
+    vrot: (Math.random()-0.5)*0.15,
+    shape: Math.random() < 0.6 ? 'rect' : 'circle',
+    life: 1, decay: 0.005 + Math.random()*0.005,
+    mode,
+  };
+}
+
+function launchConfetti() {
+  particles = [];
+  for (let i = 0; i < 200; i++) {
+    const p = makeParticle('go');
+    p.y = -Math.random() * 200;
+    particles.push(p);
+  }
+  if (!animId) animLoop();
+}
+
+function launchDark() {
+  particles = [];
+  for (let i = 0; i < 60; i++) {
+    const p = makeParticle('no');
+    p.y = confCanvas.height + Math.random() * 100;
+    particles.push(p);
+  }
+  if (!animId) animLoop();
+}
+
+function animLoop() {
+  confCtx.clearRect(0, 0, confCanvas.width, confCanvas.height);
+
+  particles.forEach(p => {
+    p.x   += p.vx;
+    p.y   += p.vy;
+    p.vy  += p.mode === 'go' ? 0.12 : -0.12;
+    p.rot += p.vrot;
+    p.life -= p.decay;
+
+    if (p.life <= 0) return;
+
+    confCtx.save();
+    confCtx.globalAlpha = Math.max(0, p.life);
+    confCtx.translate(p.x, p.y);
+    confCtx.rotate(p.rot);
+    confCtx.fillStyle = p.color;
+
+    if (p.shape === 'rect') {
+      confCtx.fillRect(-p.size/2, -p.size/4, p.size, p.size/2);
+    } else {
+      confCtx.beginPath();
+      confCtx.arc(0, 0, p.size/2, 0, Math.PI*2);
+      confCtx.fill();
+    }
+    confCtx.restore();
+  });
+
+  particles = particles.filter(p => p.life > 0);
+
+  if (particles.length > 0) {
+    animId = requestAnimationFrame(animLoop);
+  } else {
+    animId = null;
+    confCtx.clearRect(0, 0, confCanvas.width, confCanvas.height);
+  }
+}
+
+function stopConfetti() {
+  particles = [];
+  if (animId) {
+    cancelAnimationFrame(animId);
+    animId = null;
+  }
+  confCtx.clearRect(0, 0, confCanvas.width, confCanvas.height);
+}
+</script>
+</body>
+</html>
