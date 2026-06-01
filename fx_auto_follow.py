@@ -135,17 +135,18 @@ async def login(page: Page) -> bool:
         await username_input.fill(X_USERNAME)
         logger.info("ユーザー名入力完了")
         await asyncio.sleep(2)
+        # ページ上のボタン一覧をログ出力
+        btns = await page.locator("button").all()
+        btn_texts = []
+        for btn in btns:
+            txt = (await btn.inner_text()).strip()
+            if txt:
+                btn_texts.append(txt)
+        logger.info(f"ページ上のボタン: {btn_texts}")
+        await page.screenshot(path="before_next.png")
         # Enterキーで送信
         await username_input.press("Enter")
         await asyncio.sleep(2)
-        # URLが変わらない場合、ボタンをJSクリック
-        if "login_enter_password" not in page.url:
-            btns = await page.locator("button").all()
-            for btn in btns:
-                txt = await btn.inner_text()
-                if txt.strip() in ("Next", "次へ", "Continue", "続ける"):
-                    await btn.click()
-                    break
         # パスワード画面に遷移するまで待機
         try:
             await page.wait_for_url("**/login_enter_password**", timeout=8000)
