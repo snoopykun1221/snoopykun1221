@@ -121,75 +121,21 @@ async def follow_wait() -> None:
 # ── ログイン ────────────────────────────────────────────────────
 
 async def login(page: Page) -> bool:
-    logger.info("ログイン開始...")
+    logger.info("ブラウザを開きます。手動でXにログインしてください。")
     await page.goto("https://x.com/login", wait_until="load", timeout=60000)
-    await asyncio.sleep(4)
-    logger.info(f"ページURL: {page.url}")
+    logger.info("ログインが完了したら自動で次の処理に進みます（最大3分待機）...")
 
-    # ユーザー名入力
-    try:
-        await page.wait_for_selector('button', timeout=20000)
-        # ログイン方法選択画面の場合、「他のログイン方法」リンクをクリック
-        alt_login_keywords = [
-            "他のサインイン方法", "他のログイン", "電話番号、メールアドレス",
-            "Use phone, email", "Sign in with phone", "パスワードを使"
-        ]
-        for kw in alt_login_keywords:
-            el = page.locator(f'text="{kw}"').first
-            if await el.count() == 0:
-                el = page.locator(f':has-text("{kw}")').first
-            if await el.count() > 0:
-                logger.info(f"ログイン方法選択: '{kw}' をクリック")
-                await el.click()
-                await asyncio.sleep(2)
-                break
-        username_input = page.locator('input[name="text"], input[autocomplete="username"]').first
-        await username_input.wait_for(state="visible", timeout=20000)
-        await username_input.click()
-        await username_input.fill(X_USERNAME)
-        logger.info("ユーザー名入力完了")
-        await asyncio.sleep(2)
-        # Enterキーで送信
-        await username_input.press("Enter")
-        await asyncio.sleep(2)
-        # パスワード画面に遷移するまで待機
-        try:
-            await page.wait_for_url("**/login_enter_password**", timeout=8000)
-        except PlaywrightTimeout:
-            pass
-        await asyncio.sleep(3)
-        logger.info(f"ユーザー名後URL: {page.url}")
-    except PlaywrightTimeout:
-        logger.error("ユーザー名入力欄が見つかりません。")
-        return False
-
-    # メールアドレス確認が求められる場合
-    email_input = page.locator('input[data-testid="ocfEnterTextTextInput"]')
-    if await email_input.count() > 0:
-        logger.info("メールアドレス確認が求められています。")
-        if not X_EMAIL:
-            logger.error("X_EMAIL が未設定です。.env に設定してください。")
-            return False
-        await email_input.fill(X_EMAIL)
-        await human_wait()
-        await page.keyboard.press("Enter")
-        await asyncio.sleep(3)
-
-    # パスワード入力
-    try:
-        await page.wait_for_selector('input[type="password"]', timeout=15000)
-        await asyncio.sleep(1)
-        password_inputs = await page.locator('input[type="password"]').all()
-        logger.info(f"パスワード入力欄の数: {len(password_inputs)}")
-        password_input = page.locator('input[type="password"]').last
-        await password_input.click(force=True)
-        await password_input.fill(X_PASSWORD)
-        logger.info("パスワード入力完了")
-        await human_wait()
-        await page.keyboard.press("Enter")
-        await asyncio.sleep(6)
-    except PlaywrightTimeout:
-        logger.error("パスワード入力欄が見つかりません。")
+    # ユーザーが手動でログインするのを最大3分待つ
+    for _ in range(36):
+        await asyncio.sleep(5)
+        url = page.url
+        if "login" not in url and "onboarding" not in url and "x.com" in url:
+            timeline = await page.locator('[data-testid="primaryColumn"]').count()
+            if timeline > 0:
+                logger.info("ログイン成功を確認しました。")
+                return True
+    logger.error("3分以内にログインが確認できませんでした。")
+    return False
         return False
 
     # ログイン成功確認
