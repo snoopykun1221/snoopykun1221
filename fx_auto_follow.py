@@ -29,6 +29,7 @@ X_PASSWORD        = os.getenv("X_PASSWORD")        # Xのパスワード
 X_EMAIL           = os.getenv("X_EMAIL", "")       # 2段階認証時に使用するメールアドレス
 
 DAILY_FOLLOW_LIMIT  = int(os.getenv("DAILY_FOLLOW_LIMIT", "200"))
+RUN_FOLLOW_LIMIT    = int(os.getenv("RUN_FOLLOW_LIMIT", "15"))
 FOLLOW_DELAY_MIN    = int(os.getenv("FOLLOW_DELAY_MIN", "30"))   # フォロー間隔 最小（秒）
 FOLLOW_DELAY_MAX    = int(os.getenv("FOLLOW_DELAY_MAX", "90"))   # フォロー間隔 最大（秒）
 HEADLESS            = os.getenv("HEADLESS", "false").lower() == "true"
@@ -357,6 +358,10 @@ async def main():
         for username in candidates:
             if get_today_count(state) >= DAILY_FOLLOW_LIMIT:
                 logger.info("本日の上限に達しました。終了します。")
+                break
+
+            if followed_count >= RUN_FOLLOW_LIMIT:
+                logger.info(f"今回の実行上限 {RUN_FOLLOW_LIMIT} 人に達しました。終了します。")
                 break
 
             # 異常検知チェック
