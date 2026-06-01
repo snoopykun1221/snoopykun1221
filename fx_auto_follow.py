@@ -136,15 +136,9 @@ async def login(page: Page) -> bool:
                 return True
     logger.error("3分以内にログインが確認できませんでした。")
     return False
-        return False
 
-    # ログイン成功確認
-    logger.info(f"ログイン後URL: {page.url}")
-    if "home" in page.url or ("x.com" in page.url and "login" not in page.url and "onboarding" not in page.url):
-        logger.info("ログイン成功。")
-        return True
 
-    logger.error(f"ログイン失敗。現在のURL: {page.url}")
+
     return False
 
 
