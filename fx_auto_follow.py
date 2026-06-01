@@ -213,7 +213,14 @@ async def collect_users_from_search(
 
     logger.info(f"検索: [{keyword}]")
     await page.goto(url, wait_until="load", timeout=30000)
-    await human_wait(2, 4)
+    await asyncio.sleep(3)
+
+    # ツイートが表示されるまで待機
+    try:
+        await page.wait_for_selector('article[data-testid="tweet"]', timeout=15000)
+    except PlaywrightTimeout:
+        logger.warning(f"  ツイートが見つかりません: [{keyword}]")
+        return []
 
     # スクロールしてツイートを読み込む
     for _ in range(3):
