@@ -263,14 +263,14 @@ async def collect_users_from_search(
 async def follow_user(page: Page, username: str) -> bool:
     """指定ユーザーのプロフィールを開いてフォローする"""
     try:
-        await page.goto(f"https://x.com/{username}", wait_until="domcontentloaded", timeout=20000)
-        await human_wait(1.5, 3)
+        await page.goto(f"https://x.com/{username}", wait_until="load", timeout=20000)
+        await asyncio.sleep(2)
 
-        # フォローボタンを探す
-        follow_btn = page.locator('[data-testid="follow"]').first
+        # フォローボタンを探す（複数のセレクタを試す）
+        follow_btn = page.locator('[data-testid="follow"], [data-testid="followButton"]').first
         if await follow_btn.count() == 0:
             # すでにフォロー済み or 存在しないアカウント
-            following_btn = page.locator('[data-testid="following"]')
+            following_btn = page.locator('[data-testid="following"], [data-testid="followingButton"]')
             if await following_btn.count() > 0:
                 logger.info(f"  {username}: すでにフォロー済み")
             else:
