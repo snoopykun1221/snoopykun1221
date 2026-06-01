@@ -194,8 +194,12 @@ async def login(page: Page) -> bool:
 async def is_logged_in(page: Page) -> bool:
     """ログイン済みかどうか確認"""
     await page.goto("https://x.com/home", wait_until="load", timeout=30000)
-    await human_wait()
-    return "login" not in page.url
+    await asyncio.sleep(3)
+    if "login" in page.url or "onboarding" in page.url:
+        return False
+    # タイムラインが表示されているか確認
+    timeline = await page.locator('[data-testid="primaryColumn"]').count()
+    return timeline > 0
 
 
 # ── ユーザー収集 ────────────────────────────────────────────────
