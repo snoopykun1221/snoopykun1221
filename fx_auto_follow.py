@@ -128,22 +128,27 @@ async def login(page: Page) -> bool:
 
     # ユーザー名入力
     try:
-        await page.wait_for_selector('input', timeout=20000)
-        username_input = page.locator('input[name="text"], input[autocomplete="username"], input[type="text"]').first
+        await page.wait_for_selector('button', timeout=20000)
+        # ログイン方法選択画面の場合、「他のログイン方法」リンクをクリック
+        alt_login_keywords = [
+            "他のサインイン方法", "他のログイン", "電話番号、メールアドレス",
+            "Use phone, email", "Sign in with phone", "パスワードを使"
+        ]
+        for kw in alt_login_keywords:
+            el = page.locator(f'text="{kw}"').first
+            if await el.count() == 0:
+                el = page.locator(f':has-text("{kw}")').first
+            if await el.count() > 0:
+                logger.info(f"ログイン方法選択: '{kw}' をクリック")
+                await el.click()
+                await asyncio.sleep(2)
+                break
+        username_input = page.locator('input[name="text"], input[autocomplete="username"]').first
         await username_input.wait_for(state="visible", timeout=20000)
         await username_input.click()
         await username_input.fill(X_USERNAME)
         logger.info("ユーザー名入力完了")
         await asyncio.sleep(2)
-        # ページ上のボタン一覧をログ出力
-        btns = await page.locator("button").all()
-        btn_texts = []
-        for btn in btns:
-            txt = (await btn.inner_text()).strip()
-            if txt:
-                btn_texts.append(txt)
-        logger.info(f"ページ上のボタン: {btn_texts}")
-        await page.screenshot(path="before_next.png")
         # Enterキーで送信
         await username_input.press("Enter")
         await asyncio.sleep(2)
