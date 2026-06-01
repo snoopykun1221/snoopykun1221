@@ -264,12 +264,19 @@ async def follow_user(page: Page, username: str) -> bool:
     """指定ユーザーのプロフィールを開いてフォローする"""
     try:
         await page.goto(f"https://x.com/{username}", wait_until="load", timeout=20000)
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
 
-        # フォローボタンを探す（複数のセレクタを試す）
-        follow_btn = page.locator('[data-testid="follow"], [data-testid="followButton"]').first
+        # フォローボタンを探す（data-testid・テキスト両方で試す）
+        follow_btn = page.locator(
+            '[data-testid="follow"], [data-testid="followButton"]'
+        ).first
         if await follow_btn.count() == 0:
-            # すでにフォロー済み or 存在しないアカウント
+            # テキストで探す
+            follow_btn = page.get_by_role("button", name="Follow").first
+        if await follow_btn.count() == 0:
+            follow_btn = page.get_by_role("button", name="フォロー").first
+
+        if await follow_btn.count() == 0:
             following_btn = page.locator('[data-testid="following"], [data-testid="followingButton"]')
             if await following_btn.count() > 0:
                 logger.info(f"  {username}: すでにフォロー済み")
@@ -278,10 +285,13 @@ async def follow_user(page: Page, username: str) -> bool:
             return False
 
         await follow_btn.click()
-        await human_wait(1, 2)
+        await asyncio.sleep(2)
 
-        # フォロー確認（ボタンが Following に変わる）
-        if await page.locator('[data-testid="following"]').count() > 0:
+        # フォロー確認
+        if await page.locator('[data-testid="following"], [data-testid="followingButton"]').count() > 0:
+            logger.info(f"  ✓ フォロー完了: @{username}")
+            return True
+        if await page.get_by_role("button", name="Following").count() > 0:
             logger.info(f"  ✓ フォロー完了: @{username}")
             return True
 
