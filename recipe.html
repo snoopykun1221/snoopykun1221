@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🍳 一人前レシピ検索</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #15110d;
+    --bg2: #1f1813;
+    --card: rgba(255, 255, 255, 0.05);
+    --card-border: rgba(255, 255, 255, 0.09);
+    --text: #f4ece4;
+    --muted: #b3a392;
+    --accent: #ff7a3d;
+    --accent2: #ffb347;
+    --green: #6ec07a;
+  }
+
+  body {
+    background: radial-gradient(circle at 20% -10%, #2a1c12 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+                 "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+    min-height: 100vh;
+    padding: 24px 16px 64px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header { text-align: center; margin-bottom: 26px; }
+  header h1 {
+    font-size: 1.9rem;
+    letter-spacing: 0.04em;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header p { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
+
+  /* Search box */
+  .search-box { position: relative; margin-bottom: 16px; }
+  .search-box input {
+    width: 100%;
+    padding: 16px 46px 16px 50px;
+    font-size: 1.05rem;
+    color: var(--text);
+    background: var(--bg2);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .search-box input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255, 122, 61, 0.18);
+  }
+  .search-box .ico {
+    position: absolute; left: 17px; top: 50%; transform: translateY(-50%);
+    font-size: 1.15rem; opacity: .8; pointer-events: none;
+  }
+  .search-box .clear {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    background: rgba(255,255,255,0.08); border: none; color: var(--muted);
+    width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+    font-size: 1rem; display: none; align-items: center; justify-content: center;
+  }
+  .search-box .clear:hover { background: rgba(255,255,255,0.16); color: var(--text); }
+
+  /* Category chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .chip {
+    padding: 7px 14px; font-size: 0.86rem; border-radius: 999px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--card-border); color: var(--muted);
+    transition: all .15s; user-select: none;
+  }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .chip.active {
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    color: #2a1606; border-color: transparent; font-weight: 700;
+  }
+
+  /* Recipe list */
+  .list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .list { grid-template-columns: 1fr; } }
+  .item {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 14px; padding: 15px 16px; cursor: pointer;
+    transition: transform .12s, border-color .15s, background .15s;
+  }
+  .item:hover { transform: translateY(-2px); border-color: var(--accent); background: rgba(255,122,61,0.08); }
+  .item .emoji { font-size: 1.5rem; }
+  .item .name { font-size: 1.05rem; font-weight: 700; margin-top: 4px; }
+  .item .meta { color: var(--muted); font-size: 0.8rem; margin-top: 3px; }
+
+  .empty { text-align: center; color: var(--muted); padding: 40px 10px; }
+  .empty .big { font-size: 2.4rem; display: block; margin-bottom: 10px; }
+
+  /* Detail */
+  .detail { animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  .back {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    font-size: 0.95rem; padding: 4px 0; margin-bottom: 14px; display: inline-flex;
+    align-items: center; gap: 6px;
+  }
+  .back:hover { text-decoration: underline; }
+
+  .detail-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; }
+  .detail-head .big-emoji { font-size: 2.8rem; line-height: 1; }
+  .detail-head h2 { font-size: 1.6rem; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .badge {
+    font-size: 0.78rem; padding: 3px 10px; border-radius: 999px;
+    background: rgba(255,255,255,0.07); color: var(--muted); border: 1px solid var(--card-border);
+  }
+  .badge.cat { color: var(--accent2); border-color: rgba(255,179,71,0.4); }
+
+  /* Servings selector */
+  .servings {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--bg2); border: 1px solid var(--card-border); border-radius: 14px;
+    padding: 12px 16px; margin-bottom: 20px;
+  }
+  .servings .label { font-size: 0.95rem; }
+  .servings .label small { color: var(--muted); display: block; font-size: 0.76rem; }
+  .stepper { display: flex; align-items: center; gap: 14px; }
+  .stepper button {
+    width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--card-border);
+    background: var(--card); color: var(--text); font-size: 1.3rem; cursor: pointer;
+    transition: all .15s; line-height: 1;
+  }
+  .stepper button:hover:not(:disabled) { background: var(--accent); color: #2a1606; border-color: transparent; }
+  .stepper button:disabled { opacity: .35; cursor: not-allowed; }
+  .stepper .count { font-size: 1.25rem; font-weight: 700; min-width: 70px; text-align: center; }
+  .stepper .count span { color: var(--accent2); }
+
+  section.block { margin-bottom: 26px; }
+  section.block > h3 {
+    font-size: 1.15rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+    border-left: 4px solid var(--accent); padding-left: 10px;
+  }
+
+  /* Ingredients */
+  ul.ing { list-style: none; }
+  ul.ing li {
+    display: flex; align-items: center; gap: 10px; padding: 10px 4px;
+    border-bottom: 1px dashed var(--card-border);
+  }
+  ul.ing li:last-child { border-bottom: none; }
+  ul.ing input[type=checkbox] {
+    width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
+  }
+  ul.ing .ing-name { flex: 1; }
+  ul.ing .ing-amt { color: var(--accent2); font-weight: 700; white-space: nowrap; }
+  ul.ing li.checked .ing-name { text-decoration: line-through; color: var(--muted); }
+
+  /* Steps */
+  ol.steps { list-style: none; counter-reset: step; }
+  ol.steps li {
+    position: relative; padding: 4px 0 18px 46px; counter-increment: step;
+  }
+  ol.steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #2a1606; font-weight: 800; display: flex; align-items: center; justify-content: center;
+  }
+  ol.steps li:not(:last-child)::after {
+    content: ""; position: absolute; left: 15px; top: 34px; bottom: 4px;
+    width: 2px; background: var(--card-border);
+  }
+
+  .tips {
+    background: rgba(110,192,122,0.1); border: 1px solid rgba(110,192,122,0.3);
+    border-radius: 12px; padding: 14px 16px; color: #d7f0db; font-size: 0.92rem;
+  }
+  .tips b { color: var(--green); }
+
+  footer { text-align: center; color: var(--muted); font-size: 0.78rem; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🍳 一人前レシピ検索</h1>
+    <p>料理名を入れると、一人前の材料と作り方が出ます（人数も変えられます）</p>
+  </header>
+
+  <div class="search-box">
+    <span class="ico">🔍</span>
+    <input id="search" type="text" placeholder="料理名で検索（例：肉じゃが、カレー、麻婆豆腐）" autocomplete="off">
+    <button class="clear" id="clear" title="クリア">✕</button>
+  </div>
+
+  <div class="chips" id="chips"></div>
+
+  <div id="view"></div>
+
+  <footer>掲載レシピ数 <span id="count"></span> 品 ／ 分量はおおよその目安です</footer>
+</div>
+
+<script>
+/* ============================================================
+   レシピデータ（材料はすべて「1人前」を基準に登録）
+   ing: { n:名前, q:数量(1人前), u:単位 }  または  { n:名前, t:"少々" }
+   q を持つ材料は人数に応じて自動で再計算されます。
+   ============================================================ */
+const RECIPES = [
+  { id:"nikujaga", name:"肉じゃが", yomi:"にくじゃが", emoji:"🥔", cat:"和食",
+    aliases:["nikujaga"], time:30,
+    ing:[
+      {n:"じゃがいも", q:1, u:"個"},
+      {n:"玉ねぎ", q:0.25, u:"個"},
+      {n:"にんじん", q:0.33, u:"本"},
+      {n:"牛または豚こま切れ肉", q:60, u:"g"},
+      {n:"しらたき", q:50, u:"g"},
+      {n:"だし汁", q:150, u:"ml"},
+      {n:"醤油", q:1, u:"大さじ"},
+      {n:"みりん", q:0.5, u:"大さじ"},
+      {n:"砂糖", q:0.5, u:"大さじ"},
+      {n:"サラダ油", t:"小さじ1"}
+    ],
+    steps:[
+      "じゃがいもは一口大、玉ねぎはくし切り、にんじんは乱切りにする。しらたきは下茹でして食べやすく切る。",
+      "鍋に油を熱し、肉を炒める。色が変わったら野菜を加えてさっと炒める。",
+      "だし汁を注ぎ、煮立ったらアクを取る。砂糖・みりん・醤油を加える。",
+      "落とし蓋をして中火で15分ほど、じゃがいもが柔らかくなるまで煮る。",
+      "火を止めて少し置き、味を含ませてから盛り付ける。"
+    ],
+    tips:"いったん冷ますと味がぐっと染み込みます。時間があれば食べる前にもう一度温め直しを。" },
+
+  { id:"oyakodon", name:"親子丼", yomi:"おやこどん", emoji:"🍚", cat:"丼物",
+    aliases:["oyakodon"], time:15,
+    ing:[
+      {n:"鶏もも肉", q:80, u:"g"},
+      {n:"玉ねぎ", q:0.25, u:"個"},
+      {n:"卵", q:2, u:"個"},
+      {n:"ごはん", q:1, u:"杯"},
+      {n:"だし汁", q:80, u:"ml"},
+      {n:"醤油", q:1, u:"大さじ"},
+      {n:"みりん", q:1, u:"大さじ"},
+      {n:"砂糖", q:0.5, u:"小さじ"},
+      {n:"三つ葉や刻みネギ", t:"お好みで"}
+    ],
+    steps:[
+      "鶏肉は一口大、玉ねぎは薄切りにする。卵は溶きほぐしておく。",
+      "小さめのフライパンにだし汁・醤油・みりん・砂糖を入れて煮立てる。",
+      "玉ねぎと鶏肉を入れ、鶏に火が通るまで3〜4分煮る。",
+      "溶き卵の2/3を回し入れ、半熟になったら残りを加えて火を止める。",
+      "ふたをして10〜20秒蒸らし、ごはんにのせる。三つ葉を散らす。"
+    ],
+    tips:"卵は2回に分けて入れると、とろっと感とふんわり感が両立します。" },
+
+  { id:"gyudon", name:"牛丼", yomi:"ぎゅうどん", emoji:"🐂", cat:"丼物",
+    aliases:["gyudon"], time:15,
+    ing:[
+      {n:"牛こま切れ肉", q:100, u:"g"},
+      {n:"玉ねぎ", q:0.5, u:"個"},
+      {n:"ごはん", q:1, u:"杯"},
+      {n:"水", q:100, u:"ml"},
+      {n:"醤油", q:1, u:"大さじ"},
+      {n:"みりん", q:1, u:"大さじ"},
+      {n:"酒", q:1, u:"大さじ"},
+      {n:"砂糖", q:1, u:"小さじ"},
+      {n:"おろし生姜", t:"少々"},
+      {n:"紅生姜", t:"お好みで"}
+    ],
+    steps:[
+      "玉ねぎは薄切りにする。",
+      "鍋に水・醤油・みりん・酒・砂糖・生姜を入れて煮立てる。",
+      "玉ねぎを加えてしんなりするまで煮る。",
+      "牛肉をほぐしながら加え、アクを取りながら5分ほど煮る。",
+      "ごはんに汁ごとのせ、お好みで紅生姜を添える。"
+    ],
+    tips:"牛肉は煮すぎると固くなるので、色が変わったらすぐ火を弱めて。" },
+
+  { id:"shogayaki", name:"豚の生姜焼き", yomi:"ぶたのしょうがやき", emoji:"🐖", cat:"和食",
+    aliases:["生姜焼き","しょうがやき"], time:15,
+    ing:[
+      {n:"豚ロース薄切り肉", q:120, u:"g"},
+      {n:"玉ねぎ", q:0.25, u:"個"},
+      {n:"おろし生姜", q:1, u:"小さじ"},
+      {n:"醤油", q:1, u:"大さじ"},
+      {n:"みりん", q:1, u:"大さじ"},
+      {n:"酒", q:0.5, u:"大さじ"},
+      {n:"砂糖", q:0.5, u:"小さじ"},
+      {n:"サラダ油", t:"小さじ1"},
+      {n:"千切りキャベツ", t:"お好みで"}
+    ],
+    steps:[
+      "玉ねぎは薄切り。醤油・みりん・酒・砂糖・生姜を混ぜてタレを作る。",
+      "フライパンに油を熱し、豚肉を広げて両面焼く。",
+      "玉ねぎを加えて炒め、しんなりしたらタレを回し入れる。",
+      "全体に絡めながら、照りが出るまで煮詰める。",
+      "千切りキャベツを添えて盛り付ける。"
+    ],
+    tips:"焼く前に豚肉へ薄く小麦粉をまぶすと、タレがよく絡みます。" },
+
+  { id:"dashimaki", name:"だし巻き卵", yomi:"だしまきたまご", emoji:"🍳", cat:"副菜",
+    aliases:["卵焼き","たまごやき"], time:10,
+    ing:[
+      {n:"卵", q:2, u:"個"},
+      {n:"だし汁", q:2, u:"大さじ"},
+      {n:"醤油", q:0.25, u:"小さじ"},
+      {n:"砂糖", q:0.5, u:"小さじ"},
+      {n:"塩", t:"ひとつまみ"},
+      {n:"サラダ油", t:"適量"}
+    ],
+    steps:[
+      "卵を割りほぐし、だし汁・醤油・砂糖・塩を加えてよく混ぜる。",
+      "卵焼き器を熱し油をなじませ、卵液を1/3流し入れる。",
+      "半熟のうちに奥から手前に巻き、空いた所に油をひく。",
+      "残りの卵液を継ぎ足しながら同様に巻くのを繰り返す。",
+      "形を整えて取り出し、食べやすく切り分ける。"
+    ],
+    tips:"火は中火をキープ。巻くたびに卵液を少量ずつ足すのがきれいに巻くコツです。" },
+
+  { id:"sake-shio", name:"鮭の塩焼き", yomi:"さけのしおやき", emoji:"🐟", cat:"和食",
+    aliases:["焼き鮭","しゃけ"], time:15,
+    ing:[
+      {n:"生鮭の切り身", q:1, u:"切れ"},
+      {n:"塩", t:"小さじ1/4"},
+      {n:"酒", q:1, u:"小さじ"},
+      {n:"大根おろし", t:"お好みで"},
+      {n:"レモン", t:"お好みで"}
+    ],
+    steps:[
+      "鮭に酒を振って5分置き、出てきた水分をキッチンペーパーで拭く。",
+      "両面に塩を振り、10分ほどおく。",
+      "魚焼きグリル（またはフライパン）を熱し、皮目から焼く。",
+      "焼き色がついたら裏返し、中まで火を通す。",
+      "大根おろしとレモンを添えて盛り付ける。"
+    ],
+    tips:"塩を振って少し置くと臭みが抜け、身がしまって旨みが増します。" },
+
+  { id:"misoshiru", name:"味噌汁", yomi:"みそしる", emoji:"🥣", cat:"汁物",
+    aliases:["みそ汁","おみそしる"], time:10,
+    ing:[
+      {n:"だし汁", q:200, u:"ml"},
+      {n:"味噌", q:1, u:"大さじ"},
+      {n:"豆腐", q:50, u:"g"},
+      {n:"わかめ（乾燥）", q:1, u:"つまみ"},
+      {n:"長ねぎ", t:"少々"}
+    ],
+    steps:[
+      "豆腐はさいの目、長ねぎは小口切りにする。わかめは水で戻す。",
+      "鍋にだし汁を入れて温め、豆腐を加える。",
+      "煮立つ直前で火を弱め、味噌を溶き入れる。",
+      "わかめとねぎを加え、煮立たせる前に火を止める。"
+    ],
+    tips:"味噌を入れたら煮立たせないこと。香りが飛ばず、まろやかに仕上がります。" },
+
+  { id:"ohitashi", name:"ほうれん草のおひたし", yomi:"ほうれんそうのおひたし", emoji:"🥬", cat:"副菜",
+    aliases:["おひたし"], time:10,
+    ing:[
+      {n:"ほうれん草", q:0.5, u:"束"},
+      {n:"だし汁", q:2, u:"大さじ"},
+      {n:"醤油", q:1, u:"小さじ"},
+      {n:"かつお節", t:"少々"}
+    ],
+    steps:[
+      "ほうれん草を熱湯でさっと茹で、冷水にとる。",
+      "水気をしっかり絞り、3〜4cmの長さに切る。",
+      "だし汁と醤油を合わせ、ほうれん草を浸す。",
+      "器に盛り、かつお節をのせる。"
+    ],
+    tips:"茹でたあとすぐ冷水にとると、色鮮やかでシャキッと仕上がります。" },
+
+  { id:"kinpira", name:"きんぴらごぼう", yomi:"きんぴらごぼう", emoji:"🥢", cat:"副菜",
+    aliases:["きんぴら"], time:15,
+    ing:[
+      {n:"ごぼう", q:0.5, u:"本"},
+      {n:"にんじん", q:0.25, u:"本"},
+      {n:"醤油", q:1, u:"大さじ"},
+      {n:"みりん", q:1, u:"大さじ"},
+      {n:"砂糖", q:0.5, u:"大さじ"},
+      {n:"ごま油", q:1, u:"小さじ"},
+      {n:"白ごま", t:"少々"},
+      {n:"七味唐辛子", t:"お好みで"}
+    ],
+    steps:[
+      "ごぼうとにんじんは細切りにする。ごぼうは水にさらしてアクを抜く。",
+      "フライパンにごま油を熱し、ごぼう・にんじんを炒める。",
+      "全体に油が回ったら砂糖・みりん・醤油を加える。",
+      "汁気がなくなるまで炒め、白ごまを振る。"
+    ],
+    tips:"仕上げに七味を振るとピリッと引き締まります。" },
+
+  { id:"kabocha", name:"かぼちゃの煮物", yomi:"かぼちゃのにもの", emoji:"🎃", cat:"副菜",
+    aliases:["南瓜"], time:20,
+    ing:[
+      {n:"かぼちゃ", q:150, u:"g"},
+      {n:"だし汁", q:100, u:"ml"},
+      {n:"醤油", q:1, u:"小さじ"},
+      {n:"みりん", q:1, u:"大さじ"},
+      {n:"砂糖", q:1, u:"大さじ"}
+    ],
+    steps:[
+      "かぼちゃは一口大に切り、面取りをする。",
+      "鍋に皮を下にして並べ、だし汁・砂糖・みりん・醤油を加える。",
+      "落とし蓋をして中火で15分ほど煮る。",
+      "竹串がすっと通れば火を止め、そのまま冷まして味を含ませる。"
+    ],
+    tips:"煮汁につけたまま冷ますと、味がしっかり染み込みます。" },
+
+  { id:"chikuzenni", name:"筑前煮", yomi:"ちくぜんに", emoji:"🍲", cat:"和食",
+    aliases:["がめ煮","煮しめ"], time:40,
+    ing:[
+      {n:"鶏もも肉", q:80, u:"g"},
+      {n:"れんこん", q:40, u:"g"},
+      {n:"にんじん", q:0.33, u:"本"},
+      {n:"ごぼう", q:0.25, u:"本"},
+      {n:"しいたけ", q:1, u:"枚"},
+      {n:"こんにゃく", q:40, u:"g"},
+      {n:"だし汁", q:200, u:"ml"},
+      {n:"醤油", q:1, u:"大さじ"},
+      {n:"みりん", q:1, u:"大さじ"},
+      {n:"砂糖", q:1, u:"小さじ"},
+      {n:"ごま油", t:"小さじ1"}
+    ],
+    steps:[
+      "野菜とこんにゃくは乱切り、鶏肉は一口大に切る。ごぼうは水にさらす。",
+      "鍋にごま油を熱し、鶏肉を炒める。色が変わったら野菜を加えて炒める。",
+      "だし汁を注ぎ、煮立ったらアクを取る。砂糖・みりん・醤油を加える。",
+      "落とし蓋をして中火で20〜25分、汁気が少なくなるまで煮る。",
+      "全体を混ぜて照りを出し、器に盛る。"
+    ],
+    tips:"具材を同じくらいの大きさに切ると火の通りがそろい、見た目もきれいです。" },
+
+  { id:"chawanmushi", name:"茶碗蒸し", yomi:"ちゃわんむし", emoji:"🥚", cat:"和食",
+    aliases:["chawanmushi"], time:25,
+    ing:[
+      {n:"卵", q:1, u:"個"},
+      {n:"だし汁", q:150, u:"ml"},
+      {n:"醤油", q:0.25, u:"小さじ"},
+      {n:"塩", t:"ひとつまみ"},
+      {n:"鶏もも肉", q:30, u:"g"},
+      {n:"しいたけ", q:1, u:"枚"},
+      {n:"かまぼこ", q:2, u:"切れ"},
+      {n:"三つ葉", t:"少々"}
+    ],
+    steps:[
+      "卵を溶き、冷ましただし汁・醤油・塩を加えて混ぜ、こし器でこす。",
+      "鶏肉・しいたけ・かまぼこを器に入れ、卵液を静かに注ぐ。",
+      "蒸気の上がった蒸し器に入れ、弱火で12〜15分蒸す。",
+      "竹串を刺して澄んだ汁が出れば完成。三つ葉をのせる。"
+    ],
+    tips:"強火だと「す」が入ります。フタを少しずらして弱火でじっくりが成功のコツ。" },
+
+  { id:"curry", name:"カレーライス", yomi:"かれーらいす", emoji:"🍛", cat:"洋食",
+    aliases:["カレー","かれー","curry"], time:40,
+    ing:[
+      {n:"豚または鶏肉", q:80, u:"g"},
+      {n:"玉ねぎ", q:0.5, u:"個"},
+      {n:"にんじん", q:0.33, u:"本"},
+      {n:"じゃがいも", q:1, u:"個"},
+      {n:"カレールウ", q:1, u:"片"},
+      {n:"水", q:200, u:"ml"},
+      {n:"サラダ油", t:"小さじ1"},
+      {n:"ごはん", q:1, u:"杯"}
+    ],
+    steps:[
+      "肉と野菜を一口大に切る。",
+      "鍋に油を熱し、肉を炒めてから野菜を加えて炒める。",
+      "水を加え、煮立ったらアクを取り、野菜が柔らかくなるまで15分煮る。",
+      "いったん火を止めてルウを溶かし、再び弱火で10分ほど煮込む。",
+      "とろみがついたら、ごはんとともに盛り付ける。"
+    ],
+    tips:"ルウは火を止めてから溶かすとダマになりません。隠し味に少量のソースもおすすめ。" },
+
+  { id:"omurice", name:"オムライス", yomi:"おむらいす", emoji:"🍳", cat:"洋食",
+    aliases:["omurice"], time:20,
+    ing:[
+      {n:"ごはん", q:1, u:"杯"},
+      {n:"卵", q:2, u:"個"},
+      {n:"鶏もも肉", q:50, u:"g"},
+      {n:"玉ねぎ", q:0.25, u:"個"},
+      {n:"ケチャップ", q:2, u:"大さじ"},
+      {n:"バター", q:10, u:"g"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"サラダ油", t:"適量"}
+    ],
+    steps:[
+      "鶏肉と玉ねぎを小さく切る。フライパンにバターを熱して炒める。",
+      "ごはんを加えて炒め、ケチャップ・塩こしょうで味付けし、チキンライスを皿に盛る。",
+      "卵を溶き、油を熱したフライパンに流し入れて大きく混ぜる。",
+      "半熟になったらチキンライスにのせ、形を整える。",
+      "上からケチャップをかけて完成。"
+    ],
+    tips:"卵は半熟で火を止めると、ふわとろに仕上がります。" },
+
+  { id:"hamburg", name:"ハンバーグ", yomi:"はんばーぐ", emoji:"🍔", cat:"洋食",
+    aliases:["hamburg"], time:30,
+    ing:[
+      {n:"合いびき肉", q:120, u:"g"},
+      {n:"玉ねぎ", q:0.25, u:"個"},
+      {n:"パン粉", q:2, u:"大さじ"},
+      {n:"牛乳", q:1, u:"大さじ"},
+      {n:"卵", q:0.5, u:"個"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"ナツメグ", t:"少々"},
+      {n:"サラダ油", t:"小さじ1"},
+      {n:"ケチャップとソース", t:"各大さじ1"}
+    ],
+    steps:[
+      "玉ねぎをみじん切りにして炒め、冷ます。パン粉は牛乳に浸す。",
+      "ボウルにひき肉・玉ねぎ・パン粉・卵・調味料を入れ、粘りが出るまで練る。",
+      "小判形に成形し、中央を少しくぼませる。",
+      "油を熱し、強めの中火で両面に焼き色をつける。",
+      "弱火にしてフタをし、5〜6分蒸し焼きにする。ソースを絡めて完成。"
+    ],
+    tips:"竹串を刺して透明な肉汁が出れば焼き上がりのサインです。" },
+
+  { id:"napolitan", name:"ナポリタン", yomi:"なぽりたん", emoji:"🍝", cat:"麺類",
+    aliases:["napolitan"], time:20,
+    ing:[
+      {n:"スパゲッティ", q:100, u:"g"},
+      {n:"ウインナー", q:2, u:"本"},
+      {n:"玉ねぎ", q:0.25, u:"個"},
+      {n:"ピーマン", q:1, u:"個"},
+      {n:"ケチャップ", q:3, u:"大さじ"},
+      {n:"バター", q:10, u:"g"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"粉チーズ", t:"お好みで"}
+    ],
+    steps:[
+      "スパゲッティを袋の表示通りに茹でる。具材は薄切りにする。",
+      "フライパンにバターを熱し、ウインナーと野菜を炒める。",
+      "ケチャップを加え、軽く煮詰めて酸味をとばす。",
+      "茹でた麺を加えてよく絡め、塩こしょうで味を調える。",
+      "皿に盛り、粉チーズを振る。"
+    ],
+    tips:"ケチャップを先に炒めて水分をとばすと、コクのある味になります。" },
+
+  { id:"potesara", name:"ポテトサラダ", yomi:"ぽてとさらだ", emoji:"🥗", cat:"副菜",
+    aliases:["ポテサラ"], time:20,
+    ing:[
+      {n:"じゃがいも", q:1, u:"個"},
+      {n:"きゅうり", q:0.25, u:"本"},
+      {n:"にんじん", q:0.2, u:"本"},
+      {n:"ハム", q:1, u:"枚"},
+      {n:"マヨネーズ", q:1, u:"大さじ"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"酢", t:"少々"}
+    ],
+    steps:[
+      "じゃがいもとにんじんを茹でる。じゃがいもは熱いうちに潰す。",
+      "きゅうりは薄切りにして塩もみし、水気を絞る。ハムは細切りにする。",
+      "潰したじゃがいもに酢を振って下味をつける。",
+      "全ての具材とマヨネーズを和え、塩こしょうで味を調える。"
+    ],
+    tips:"じゃがいもが熱いうちに酢を絡めると、味がよくなじみます。" },
+
+  { id:"beefstew", name:"ビーフシチュー", yomi:"びーふしちゅー", emoji:"🍲", cat:"洋食",
+    aliases:["シチュー","beef stew"], time:60,
+    ing:[
+      {n:"牛肉（シチュー用）", q:120, u:"g"},
+      {n:"玉ねぎ", q:0.5, u:"個"},
+      {n:"にんじん", q:0.33, u:"本"},
+      {n:"じゃがいも", q:1, u:"個"},
+      {n:"デミグラスソース（ルウ）", q:1, u:"片"},
+      {n:"水", q:250, u:"ml"},
+      {n:"赤ワイン", q:1, u:"大さじ"},
+      {n:"バター", q:10, u:"g"}
+    ],
+    steps:[
+      "牛肉に塩こしょうを振り、バターで表面を焼き固める。",
+      "一口大に切った野菜を加えて炒める。",
+      "水と赤ワインを加え、煮立ったらアクを取り、弱火で40分煮込む。",
+      "火を止めてルウを溶かし、さらに15分とろみがつくまで煮る。",
+      "器に盛る。"
+    ],
+    tips:"牛肉は最初に強火で焼き色をつけると、旨みを閉じ込められます。" },
+
+  { id:"gratin", name:"グラタン", yomi:"ぐらたん", emoji:"🧀", cat:"洋食",
+    aliases:["gratin"], time:35,
+    ing:[
+      {n:"マカロニ", q:50, u:"g"},
+      {n:"鶏もも肉", q:60, u:"g"},
+      {n:"玉ねぎ", q:0.25, u:"個"},
+      {n:"バター", q:15, u:"g"},
+      {n:"小麦粉", q:1.5, u:"大さじ"},
+      {n:"牛乳", q:200, u:"ml"},
+      {n:"とろけるチーズ", q:30, u:"g"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"パン粉", t:"お好みで"}
+    ],
+    steps:[
+      "マカロニを茹でる。鶏肉と玉ねぎは小さめに切る。",
+      "バターで鶏肉と玉ねぎを炒め、小麦粉を振り入れて粉っぽさがなくなるまで炒める。",
+      "牛乳を少しずつ加え、とろみがつくまで混ぜながら煮る。塩こしょうで調味する。",
+      "マカロニを加えて混ぜ、耐熱皿に入れてチーズとパン粉をのせる。",
+      "オーブントースターで焼き色がつくまで焼く。"
+    ],
+    tips:"牛乳は少量ずつ加えて混ぜると、ダマにならず滑らかなソースになります。" },
+
+  { id:"cornsoup", name:"コーンスープ", yomi:"こーんすーぷ", emoji:"🌽", cat:"汁物",
+    aliases:["corn soup"], time:15,
+    ing:[
+      {n:"クリームコーン缶", q:100, u:"g"},
+      {n:"牛乳", q:150, u:"ml"},
+      {n:"バター", q:5, u:"g"},
+      {n:"コンソメ", q:0.5, u:"小さじ"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"パセリ", t:"お好みで"}
+    ],
+    steps:[
+      "鍋にクリームコーンと牛乳を入れて中火にかける。",
+      "コンソメとバターを加え、混ぜながら温める。",
+      "ふつふつしてきたら塩こしょうで味を調える。",
+      "器に注ぎ、パセリを散らす。"
+    ],
+    tips:"煮立たせると分離しやすいので、弱めの火で温める程度に。" },
+
+  { id:"mapo", name:"麻婆豆腐", yomi:"まーぼーどうふ", emoji:"🌶️", cat:"中華",
+    aliases:["まーぼーどうふ","麻婆"], time:20,
+    ing:[
+      {n:"絹ごし豆腐", q:0.5, u:"丁"},
+      {n:"豚ひき肉", q:60, u:"g"},
+      {n:"長ねぎ", q:0.25, u:"本"},
+      {n:"おろしにんにく", t:"少々"},
+      {n:"おろし生姜", t:"少々"},
+      {n:"豆板醤", q:0.5, u:"小さじ"},
+      {n:"味噌", q:1, u:"小さじ"},
+      {n:"醤油", q:1, u:"小さじ"},
+      {n:"水", q:100, u:"ml"},
+      {n:"鶏がらスープの素", q:0.5, u:"小さじ"},
+      {n:"片栗粉", q:1, u:"小さじ"},
+      {n:"ごま油", t:"小さじ1"}
+    ],
+    steps:[
+      "豆腐は2cm角に切る。長ねぎはみじん切りにする。",
+      "ごま油でにんにく・生姜・豆板醤を炒め、香りが出たらひき肉を炒める。",
+      "味噌・醤油・水・鶏がらスープの素を加えて煮立てる。",
+      "豆腐を加えて2〜3分煮て、水溶き片栗粉でとろみをつける。",
+      "長ねぎを加えてひと混ぜし、火を止める。"
+    ],
+    tips:"豆腐を入れたら大きく混ぜると崩れません。辛さは豆板醤の量で調整を。" },
+
+  { id:"chahan", name:"チャーハン", yomi:"ちゃーはん", emoji:"🍚", cat:"中華",
+    aliases:["炒飯","焼き飯","chahan"], time:10,
+    ing:[
+      {n:"ごはん", q:1, u:"杯"},
+      {n:"卵", q:1, u:"個"},
+      {n:"長ねぎ", q:0.25, u:"本"},
+      {n:"焼豚またはハム", q:30, u:"g"},
+      {n:"醤油", q:1, u:"小さじ"},
+      {n:"鶏がらスープの素", q:0.5, u:"小さじ"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"ごま油", t:"大さじ1"}
+    ],
+    steps:[
+      "長ねぎと焼豚は細かく刻む。卵は溶いておく。",
+      "フライパンにごま油を熱し、溶き卵を入れてすぐにごはんを加える。",
+      "ごはんをほぐしながら炒め、具材を加えてさらに炒める。",
+      "鍋肌から醤油を回し入れ、鶏がらスープの素・塩こしょうで調味する。",
+      "パラっとするまで炒めて完成。"
+    ],
+    tips:"卵のすぐ後にごはんを入れて手早く混ぜると、米一粒ずつに卵がコーティングされてパラパラに。" },
+
+  { id:"gyoza", name:"餃子", yomi:"ぎょうざ", emoji:"🥟", cat:"中華",
+    aliases:["ギョーザ","gyoza"], time:30,
+    ing:[
+      {n:"餃子の皮", q:8, u:"枚"},
+      {n:"豚ひき肉", q:60, u:"g"},
+      {n:"キャベツ", q:60, u:"g"},
+      {n:"にら", q:0.15, u:"束"},
+      {n:"おろしにんにく", t:"少々"},
+      {n:"おろし生姜", t:"少々"},
+      {n:"醤油", q:0.5, u:"小さじ"},
+      {n:"ごま油", q:0.5, u:"小さじ"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"サラダ油", t:"適量"}
+    ],
+    steps:[
+      "キャベツとにらをみじん切りにし、塩少々をして水気を絞る。",
+      "ひき肉・野菜・にんにく・生姜・醤油・ごま油を粘りが出るまで混ぜる。",
+      "皮に具をのせ、ふちに水をつけてひだを作りながら包む。",
+      "油を熱したフライパンに並べ、焼き色がついたら水を回し入れフタをする。",
+      "水分がとんだらフタを取り、ごま油を回しかけてカリッと焼く。"
+    ],
+    tips:"焼くときに少量の小麦粉を溶いた水を入れると、パリッとした羽根つき餃子になります。" },
+
+  { id:"chinjao", name:"青椒肉絲", yomi:"ちんじゃおろーすー", emoji:"🫑", cat:"中華",
+    aliases:["チンジャオロース","ちんじゃお"], time:20,
+    ing:[
+      {n:"牛または豚もも肉", q:80, u:"g"},
+      {n:"ピーマン", q:2, u:"個"},
+      {n:"たけのこ水煮", q:40, u:"g"},
+      {n:"オイスターソース", q:1, u:"小さじ"},
+      {n:"醤油", q:1, u:"小さじ"},
+      {n:"酒", q:1, u:"小さじ"},
+      {n:"砂糖", q:0.5, u:"小さじ"},
+      {n:"片栗粉", q:0.5, u:"小さじ"},
+      {n:"ごま油", t:"大さじ1"}
+    ],
+    steps:[
+      "肉・ピーマン・たけのこを細切りにする。肉に酒と片栗粉をもみ込む。",
+      "オイスターソース・醤油・砂糖を合わせておく。",
+      "ごま油を熱し、肉を炒めて色が変わったら取り出す。",
+      "ピーマンとたけのこを炒め、肉を戻して合わせ調味料を加える。",
+      "強火でさっと炒め合わせる。"
+    ],
+    tips:"具材は細さをそろえて切ると、火の通りと食感が均一になります。" },
+
+  { id:"hoikoro", name:"回鍋肉", yomi:"ほいこーろー", emoji:"🥬", cat:"中華",
+    aliases:["ホイコーロー"], time:20,
+    ing:[
+      {n:"豚バラ薄切り肉", q:80, u:"g"},
+      {n:"キャベツ", q:100, u:"g"},
+      {n:"ピーマン", q:1, u:"個"},
+      {n:"長ねぎ", q:0.2, u:"本"},
+      {n:"テンメンジャン（甜麺醤）", q:1, u:"大さじ"},
+      {n:"豆板醤", q:0.5, u:"小さじ"},
+      {n:"醤油", q:0.5, u:"小さじ"},
+      {n:"おろしにんにく", t:"少々"},
+      {n:"ごま油", t:"大さじ1"}
+    ],
+    steps:[
+      "キャベツはざく切り、ピーマンと長ねぎは食べやすく切る。豚肉は一口大に切る。",
+      "ごま油でにんにくと豆板醤を炒め、豚肉を加えて炒める。",
+      "野菜を加えて強火でさっと炒める。",
+      "甜麺醤・醤油を加えて全体に絡め、手早く炒め合わせる。"
+    ],
+    tips:"野菜は炒めすぎず、シャキッと感を残すのがおいしさのポイント。" },
+
+  { id:"ebichili", name:"エビチリ", yomi:"えびちり", emoji:"🦐", cat:"中華",
+    aliases:["海老チリ"], time:25,
+    ing:[
+      {n:"むきえび", q:100, u:"g"},
+      {n:"長ねぎ", q:0.25, u:"本"},
+      {n:"おろしにんにく", t:"少々"},
+      {n:"おろし生姜", t:"少々"},
+      {n:"豆板醤", q:0.5, u:"小さじ"},
+      {n:"ケチャップ", q:1.5, u:"大さじ"},
+      {n:"砂糖", q:0.5, u:"小さじ"},
+      {n:"鶏がらスープの素", q:0.5, u:"小さじ"},
+      {n:"水", q:80, u:"ml"},
+      {n:"片栗粉", q:1, u:"小さじ"},
+      {n:"ごま油", t:"大さじ1"}
+    ],
+    steps:[
+      "えびは背わたを取り、片栗粉（分量外）でもんで洗い水気を拭く。長ねぎはみじん切り。",
+      "ごま油でにんにく・生姜・豆板醤・長ねぎを炒める。",
+      "えびを加えて炒め、色が変わったらケチャップ・砂糖・鶏がらスープ・水を加える。",
+      "煮立ったら水溶き片栗粉でとろみをつける。"
+    ],
+    tips:"えびは下処理で臭みを取ると、ぷりっと仕上がります。" },
+
+  { id:"ramen", name:"醤油ラーメン", yomi:"しょうゆらーめん", emoji:"🍜", cat:"麺類",
+    aliases:["ラーメン","らーめん","ramen"], time:20,
+    ing:[
+      {n:"中華麺", q:1, u:"玉"},
+      {n:"お湯", q:400, u:"ml"},
+      {n:"鶏がらスープの素", q:1, u:"小さじ"},
+      {n:"醤油", q:1.5, u:"大さじ"},
+      {n:"ごま油", q:0.5, u:"小さじ"},
+      {n:"チャーシュー", q:2, u:"枚"},
+      {n:"味付け卵", q:0.5, u:"個"},
+      {n:"長ねぎ", t:"少々"},
+      {n:"メンマ", t:"お好みで"}
+    ],
+    steps:[
+      "丼に醤油・鶏がらスープの素・ごま油を入れておく。",
+      "鍋でお湯を沸かし、丼にスープ用として注いでタレを溶く。",
+      "別の湯で中華麺を表示通りに茹で、湯切りして丼に入れる。",
+      "チャーシュー・味玉・ねぎ・メンマをのせて完成。"
+    ],
+    tips:"麺とスープ用のお湯は分けて沸かすと、スープが濁らずきれいに仕上がります。" },
+
+  { id:"yakisoba", name:"焼きそば", yomi:"やきそば", emoji:"🍳", cat:"麺類",
+    aliases:["yakisoba"], time:15,
+    ing:[
+      {n:"焼きそば用蒸し麺", q:1, u:"玉"},
+      {n:"豚バラ薄切り肉", q:50, u:"g"},
+      {n:"キャベツ", q:80, u:"g"},
+      {n:"にんじん", q:0.2, u:"本"},
+      {n:"焼きそばソース", q:1.5, u:"大さじ"},
+      {n:"サラダ油", t:"小さじ1"},
+      {n:"青のり・紅生姜", t:"お好みで"}
+    ],
+    steps:[
+      "豚肉と野菜を食べやすく切る。",
+      "フライパンに油を熱し、豚肉と野菜を炒める。",
+      "麺を加え、少量の水を振ってほぐしながら炒める。",
+      "ソースを回し入れて全体に絡める。",
+      "皿に盛り、青のりと紅生姜を添える。"
+    ],
+    tips:"麺をほぐす時に水を少し加えると、焦げつかずふっくら仕上がります。" },
+
+  { id:"carbonara", name:"カルボナーラ", yomi:"かるぼなーら", emoji:"🍝", cat:"麺類",
+    aliases:["carbonara"], time:20,
+    ing:[
+      {n:"スパゲッティ", q:100, u:"g"},
+      {n:"ベーコン", q:40, u:"g"},
+      {n:"卵黄", q:1, u:"個"},
+      {n:"全卵", q:1, u:"個"},
+      {n:"粉チーズ", q:2, u:"大さじ"},
+      {n:"生クリーム", q:50, u:"ml"},
+      {n:"黒こしょう", t:"たっぷり"},
+      {n:"塩", t:"少々"}
+    ],
+    steps:[
+      "ボウルに卵黄・全卵・粉チーズ・生クリームを混ぜてソースを作る。",
+      "スパゲッティを塩を入れた湯で茹でる。",
+      "フライパンでベーコンをカリッと炒める。",
+      "火を止めてから茹でた麺とソースを加え、余熱で手早く絡める。",
+      "黒こしょうをたっぷり振って盛り付ける。"
+    ],
+    tips:"卵ソースは必ず火を止めてから絡めること。火が強いと卵が固まってしまいます。" },
+
+  { id:"peperoncino", name:"ペペロンチーノ", yomi:"ぺぺろんちーの", emoji:"🌶️", cat:"麺類",
+    aliases:["peperoncino"], time:15,
+    ing:[
+      {n:"スパゲッティ", q:100, u:"g"},
+      {n:"にんにく", q:1, u:"片"},
+      {n:"鷹の爪", q:0.5, u:"本"},
+      {n:"オリーブオイル", q:1.5, u:"大さじ"},
+      {n:"塩", t:"少々"},
+      {n:"パセリ", t:"お好みで"}
+    ],
+    steps:[
+      "にんにくは薄切り、鷹の爪は種を取る。スパゲッティは塩を入れた湯で茹でる。",
+      "オリーブオイルでにんにくと鷹の爪を弱火で熱し、香りを移す。",
+      "茹で汁をお玉1杯加えて乳化させる。",
+      "茹でた麺を加えて手早く絡め、塩で味を調える。",
+      "パセリを散らして盛り付ける。"
+    ],
+    tips:"茹で汁を加えて乳化させると、オイルが麺によく絡んでコクが出ます。" },
+
+  { id:"onigiri", name:"おにぎり", yomi:"おにぎり", emoji:"🍙", cat:"その他",
+    aliases:["おむすび","onigiri"], time:10,
+    ing:[
+      {n:"温かいごはん", q:1, u:"杯"},
+      {n:"塩", t:"少々"},
+      {n:"焼き海苔", q:1, u:"枚"},
+      {n:"梅干しや鮭などの具", t:"お好みで"}
+    ],
+    steps:[
+      "手を水で湿らせ、塩を手のひらに広げる。",
+      "ごはんの中央に具を入れ、包むように軽くにぎる。",
+      "三角形になるよう形を整える。",
+      "焼き海苔を巻いて完成。"
+    ],
+    tips:"ごはんはぎゅっと握りすぎず、ふんわりまとめると食感よく仕上がります。" },
+
+  { id:"medamayaki", name:"目玉焼き", yomi:"めだまやき", emoji:"🍳", cat:"その他",
+    aliases:["めだまやき"], time:5,
+    ing:[
+      {n:"卵", q:1, u:"個"},
+      {n:"サラダ油", t:"小さじ1"},
+      {n:"塩こしょう", t:"少々"},
+      {n:"水", t:"小さじ1"}
+    ],
+    steps:[
+      "フライパンに油を熱し、卵を割り入れる。",
+      "白身が固まり始めたら水を加え、すぐにフタをする。",
+      "弱火で好みの固さになるまで蒸し焼きにする。",
+      "塩こしょうを振って皿に取り出す。"
+    ],
+    tips:"水を入れてフタをすると、黄身の表面に薄い膜がはって見た目よく仕上がります。" }
+];
+
+/* ============================================================
+   ユーティリティ
+   ============================================================ */
+
+// カタカナ→ひらがな + 小文字化 + 空白除去で検索用に正規化
+function normalize(str){
+  return (str || "")
+    .replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60))
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+// 小数を日本のレシピらしい分数表記へ（例: 0.5→1/2, 1.5→1・1/2）
+const FRACTIONS = [
+  [1/8,"1/8"], [1/4,"1/4"], [1/3,"1/3"], [3/8,"3/8"], [1/2,"1/2"],
+  [5/8,"5/8"], [2/3,"2/3"], [3/4,"3/4"], [7/8,"7/8"]
+];
+function formatQty(value){
+  const rounded = Math.round(value * 1000) / 1000;
+  const intPart = Math.floor(rounded + 1e-9);
+  const frac = rounded - intPart;
+  if (frac < 0.04) return String(intPart);
+  let best = null, bestDiff = 0.02;
+  for (const [val, label] of FRACTIONS){
+    const d = Math.abs(frac - val);
+    if (d < bestDiff){ bestDiff = d; best = label; }
+  }
+  if (!best){
+    // 近い分数が無ければ小数第1位まで
+    return (Math.round(rounded * 10) / 10).toString();
+  }
+  return intPart > 0 ? intPart + "・" + best : best;
+}
+
+function ingredientAmount(ing, servings){
+  if (ing.q == null) return ing.t || "";
+  return formatQty(ing.q * servings) + (ing.u || "");
+}
+
+// 全カテゴリを出現順で取得
+function allCategories(){
+  const seen = [];
+  for (const r of RECIPES) if (!seen.includes(r.cat)) seen.push(r.cat);
+  return seen;
+}
+
+/* ============================================================
+   状態とレンダリング
+   ============================================================ */
+const state = { query: "", category: "すべて", current: null, servings: 1 };
+
+const searchEl = document.getElementById("search");
+const clearEl  = document.getElementById("clear");
+const chipsEl  = document.getElementById("chips");
+const viewEl   = document.getElementById("view");
+document.getElementById("count").textContent = RECIPES.length;
+
+function matchedRecipes(){
+  const q = normalize(state.query);
+  return RECIPES.filter(r => {
+    if (state.category !== "すべて" && r.cat !== state.category) return false;
+    if (!q) return true;
+    const hay = normalize(r.name + r.yomi + r.cat + (r.aliases || []).join(""));
+    return hay.includes(q);
+  });
+}
+
+function renderChips(){
+  const cats = ["すべて", ...allCategories()];
+  chipsEl.innerHTML = "";
+  for (const c of cats){
+    const el = document.createElement("span");
+    el.className = "chip" + (state.category === c ? " active" : "");
+    el.textContent = c;
+    el.onclick = () => { state.category = c; state.current = null; render(); };
+    chipsEl.appendChild(el);
+  }
+}
+
+function renderList(){
+  const results = matchedRecipes();
+  if (results.length === 0){
+    viewEl.innerHTML =
+      '<div class="empty"><span class="big">🤔</span>' +
+      '「' + escapeHtml(state.query) + '」に一致する料理が見つかりませんでした。<br>' +
+      '別の料理名やカテゴリでお試しください。</div>';
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "list";
+  for (const r of results){
+    const item = document.createElement("div");
+    item.className = "item";
+    item.innerHTML =
+      '<div class="emoji">' + r.emoji + '</div>' +
+      '<div class="name">' + escapeHtml(r.name) + '</div>' +
+      '<div class="meta">' + r.cat + ' ・ 約' + r.time + '分</div>';
+    item.onclick = () => { state.current = r.id; state.servings = 1; render(); window.scrollTo(0,0); };
+    list.appendChild(item);
+  }
+  viewEl.innerHTML = "";
+  viewEl.appendChild(list);
+}
+
+function renderDetail(recipe){
+  const ingHtml = recipe.ing.map(ing =>
+    '<li><label style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer">' +
+      '<input type="checkbox" onchange="this.closest(\'li\').classList.toggle(\'checked\',this.checked)">' +
+      '<span class="ing-name">' + escapeHtml(ing.n) + '</span>' +
+      '<span class="ing-amt">' + escapeHtml(ingredientAmount(ing, state.servings)) + '</span>' +
+    '</label></li>'
+  ).join("");
+
+  const stepsHtml = recipe.steps.map(s => '<li>' + escapeHtml(s) + '</li>').join("");
+
+  viewEl.innerHTML =
+    '<div class="detail">' +
+      '<button class="back" id="backBtn">← 一覧にもどる</button>' +
+      '<div class="detail-head">' +
+        '<div class="big-emoji">' + recipe.emoji + '</div>' +
+        '<div><h2>' + escapeHtml(recipe.name) + '</h2>' +
+          '<div class="badges">' +
+            '<span class="badge cat">' + recipe.cat + '</span>' +
+            '<span class="badge">⏱ 約' + recipe.time + '分</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="servings">' +
+        '<div class="label">何人前で作る？<small>1人前の分量を自動換算します</small></div>' +
+        '<div class="stepper">' +
+          '<button id="minus" ' + (state.servings <= 1 ? "disabled" : "") + '>−</button>' +
+          '<div class="count"><span>' + state.servings + '</span> 人前</div>' +
+          '<button id="plus" ' + (state.servings >= 10 ? "disabled" : "") + '>＋</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<section class="block"><h3>🧺 材料（' + state.servings + '人前）</h3>' +
+        '<ul class="ing">' + ingHtml + '</ul></section>' +
+
+      '<section class="block"><h3>👩‍🍳 作り方</h3>' +
+        '<ol class="steps">' + stepsHtml + '</ol></section>' +
+
+      (recipe.tips ?
+        '<section class="block"><div class="tips"><b>💡 ポイント</b><br>' +
+          escapeHtml(recipe.tips) + '</div></section>' : '') +
+    '</div>';
+
+  document.getElementById("backBtn").onclick = () => { state.current = null; render(); };
+  document.getElementById("minus").onclick = () => {
+    if (state.servings > 1){ state.servings--; render(); }
+  };
+  document.getElementById("plus").onclick = () => {
+    if (state.servings < 10){ state.servings++; render(); }
+  };
+}
+
+function render(){
+  renderChips();
+  clearEl.style.display = state.query ? "flex" : "none";
+  const recipe = state.current ? RECIPES.find(r => r.id === state.current) : null;
+  if (recipe) renderDetail(recipe);
+  else renderList();
+}
+
+function escapeHtml(str){
+  return String(str)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+searchEl.addEventListener("input", e => {
+  state.query = e.target.value;
+  state.current = null;
+  render();
+});
+clearEl.addEventListener("click", () => {
+  state.query = "";
+  searchEl.value = "";
+  searchEl.focus();
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
