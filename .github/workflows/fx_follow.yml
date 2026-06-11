@@ -5,6 +5,9 @@ on:
     - cron: "0 */2 * * *"   # 2時間おきに実行（GitHub Actions は無料枠 2000分/月）
   workflow_dispatch:          # 手動実行ボタンも使えるようにする
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   follow:
     runs-on: ubuntu-latest
@@ -27,8 +30,9 @@ jobs:
 
       - name: Restore cookies
         run: |
-          echo "${{ secrets.X_COOKIES }}" | tr -d ' \n\r' | base64 -d > x_cookies.json
-          echo "Cookieファイルを復元しました"
+          echo "${{ secrets.X_COOKIES }}" | tr -d ' \n\r' | base64 -d > x_cookies.json 2>/dev/null \
+            && echo "Cookieを復元しました" \
+            || echo "Cookie復元スキップ - 自動ログインを使用します"
 
       - name: Restore follow state
         uses: actions/cache@v4
