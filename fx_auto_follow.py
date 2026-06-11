@@ -29,6 +29,7 @@ X_PASSWORD        = os.getenv("X_PASSWORD")        # Xのパスワード
 X_EMAIL           = os.getenv("X_EMAIL", "")       # 2段階認証時に使用するメールアドレス
 
 DAILY_FOLLOW_LIMIT  = int(os.getenv("DAILY_FOLLOW_LIMIT", "200"))
+RUN_FOLLOW_LIMIT    = int(os.getenv("RUN_FOLLOW_LIMIT", "15"))
 FOLLOW_DELAY_MIN    = int(os.getenv("FOLLOW_DELAY_MIN", "30"))   # フォロー間隔 最小（秒）
 FOLLOW_DELAY_MAX    = int(os.getenv("FOLLOW_DELAY_MAX", "90"))   # フォロー間隔 最大（秒）
 HEADLESS            = os.getenv("HEADLESS", "false").lower() == "true"
@@ -121,81 +122,76 @@ async def follow_wait() -> None:
 # ── ログイン ────────────────────────────────────────────────────
 
 async def login(page: Page) -> bool:
-    logger.info("ログイン開始...")
+    """ヘッドレス環境では自動ログイン、それ以外は手動ログインを待機"""
     await page.goto("https://x.com/login", wait_until="load", timeout=60000)
-    await asyncio.sleep(4)
-    logger.info(f"ページURL: {page.url}")
+    await asyncio.sleep(3)
 
-    # ユーザー名入力
-    try:
-        await page.wait_for_selector('input', timeout=20000)
-        username_input = page.locator('input[name="text"], input[autocomplete="username"], input[type="text"]').first
-        await username_input.wait_for(state="visible", timeout=20000)
-        await username_input.click()
-        await username_input.fill(X_USERNAME)
-        logger.info("ユーザー名入力完了")
-        await human_wait()
-        # 「次へ」ボタンをクリック
-        next_btn = page.locator('button[data-testid="LoginForm_Login_Button"], button:has-text("Next"), button:has-text("次へ")').first
-        if await next_btn.count() > 0:
-            await next_btn.click()
-        else:
-            await page.keyboard.press("Enter")
-        # パスワード画面に遷移するまで待機
+    if HEADLESS:
+        # ヘッドレス（GitHub Actions等）: 自動入力でログイン
+        logger.info("自動ログインを試みます...")
         try:
-            await page.wait_for_url("**/login_enter_password**", timeout=10000)
-        except PlaywrightTimeout:
-            pass
-        await asyncio.sleep(3)
-        logger.info(f"ユーザー名後URL: {page.url}")
-    except PlaywrightTimeout:
-        logger.error("ユーザー名入力欄が見つかりません。")
-        return False
+            username_input = page.locator(
+                'input[name="text"], input[autocomplete="username"]'
+            ).first
+            await username_input.wait_for(timeout=15000)
+            await username_input.fill(X_USERNAME)
+            await human_wait(1, 2)
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(2)
 
-    # メールアドレス確認が求められる場合
-    email_input = page.locator('input[data-testid="ocfEnterTextTextInput"]')
-    if await email_input.count() > 0:
-        logger.info("メールアドレス確認が求められています。")
-        if not X_EMAIL:
-            logger.error("X_EMAIL が未設定です。.env に設定してください。")
+            # メールアドレス確認画面が出る場合
+            email_input = page.locator('input[data-testid="ocfEnterTextTextInput"]')
+            if await email_input.count() > 0:
+                await email_input.fill(X_EMAIL or X_USERNAME)
+                await human_wait(1, 2)
+                await page.keyboard.press("Enter")
+                await asyncio.sleep(2)
+
+            # パスワード入力
+            password_input = page.locator('input[name="password"], input[type="password"]').last
+            await password_input.wait_for(timeout=10000)
+            await password_input.fill(X_PASSWORD)
+            await human_wait(1, 2)
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(5)
+
+            # ログイン確認
+            if "login" not in page.url and "onboarding" not in page.url:
+                timeline = await page.locator('[data-testid="primaryColumn"]').count()
+                if timeline > 0:
+                    logger.info("自動ログイン成功。")
+                    return True
+
+            logger.error(f"自動ログイン失敗。現在URL: {page.url}")
             return False
-        await email_input.fill(X_EMAIL)
-        await human_wait()
-        await page.keyboard.press("Enter")
-        await asyncio.sleep(3)
 
-    # パスワード入力
-    try:
-        await page.wait_for_selector('input[type="password"]', timeout=15000)
-        await asyncio.sleep(1)
-        password_inputs = await page.locator('input[type="password"]').all()
-        logger.info(f"パスワード入力欄の数: {len(password_inputs)}")
-        password_input = page.locator('input[type="password"]').last
-        await password_input.click(force=True)
-        await password_input.fill(X_PASSWORD)
-        logger.info("パスワード入力完了")
-        await human_wait()
-        await page.keyboard.press("Enter")
-        await asyncio.sleep(6)
-    except PlaywrightTimeout:
-        logger.error("パスワード入力欄が見つかりません。")
+        except Exception as e:
+            logger.error(f"自動ログインエラー: {e}")
+            return False
+    else:
+        # 非ヘッドレス: 手動ログイン待機（最大3分）
+        logger.info("ブラウザが開きました。手動でXにログインしてください（最大3分）...")
+        for _ in range(36):
+            await asyncio.sleep(5)
+            url = page.url
+            if "login" not in url and "onboarding" not in url and "x.com" in url:
+                timeline = await page.locator('[data-testid="primaryColumn"]').count()
+                if timeline > 0:
+                    logger.info("ログイン成功を確認しました。")
+                    return True
+        logger.error("3分以内にログインが確認できませんでした。")
         return False
-
-    # ログイン成功確認
-    logger.info(f"ログイン後URL: {page.url}")
-    if "home" in page.url or ("x.com" in page.url and "login" not in page.url and "onboarding" not in page.url):
-        logger.info("ログイン成功。")
-        return True
-
-    logger.error(f"ログイン失敗。現在のURL: {page.url}")
-    return False
 
 
 async def is_logged_in(page: Page) -> bool:
     """ログイン済みかどうか確認"""
     await page.goto("https://x.com/home", wait_until="load", timeout=30000)
-    await human_wait()
-    return "login" not in page.url
+    await asyncio.sleep(3)
+    if "login" in page.url or "onboarding" in page.url:
+        return False
+    # タイムラインが表示されているか確認
+    timeline = await page.locator('[data-testid="primaryColumn"]').count()
+    return timeline > 0
 
 
 # ── ユーザー収集 ────────────────────────────────────────────────
@@ -213,7 +209,14 @@ async def collect_users_from_search(
 
     logger.info(f"検索: [{keyword}]")
     await page.goto(url, wait_until="load", timeout=30000)
-    await human_wait(2, 4)
+    await asyncio.sleep(3)
+
+    # ツイートが表示されるまで待機
+    try:
+        await page.wait_for_selector('article[data-testid="tweet"]', timeout=15000)
+    except PlaywrightTimeout:
+        logger.warning(f"  ツイートが見つかりません: [{keyword}]")
+        return []
 
     # スクロールしてツイートを読み込む
     for _ in range(3):
@@ -256,14 +259,21 @@ async def collect_users_from_search(
 async def follow_user(page: Page, username: str) -> bool:
     """指定ユーザーのプロフィールを開いてフォローする"""
     try:
-        await page.goto(f"https://x.com/{username}", wait_until="domcontentloaded", timeout=20000)
-        await human_wait(1.5, 3)
+        await page.goto(f"https://x.com/{username}", wait_until="load", timeout=20000)
+        await asyncio.sleep(3)
 
-        # フォローボタンを探す
-        follow_btn = page.locator('[data-testid="follow"]').first
+        # フォローボタンを探す（data-testid・テキスト両方で試す）
+        follow_btn = page.locator(
+            '[data-testid="follow"], [data-testid="followButton"]'
+        ).first
         if await follow_btn.count() == 0:
-            # すでにフォロー済み or 存在しないアカウント
-            following_btn = page.locator('[data-testid="following"]')
+            # テキストで探す
+            follow_btn = page.get_by_role("button", name="Follow").first
+        if await follow_btn.count() == 0:
+            follow_btn = page.get_by_role("button", name="フォロー").first
+
+        if await follow_btn.count() == 0:
+            following_btn = page.locator('[data-testid="following"], [data-testid="followingButton"]')
             if await following_btn.count() > 0:
                 logger.info(f"  {username}: すでにフォロー済み")
             else:
@@ -271,10 +281,13 @@ async def follow_user(page: Page, username: str) -> bool:
             return False
 
         await follow_btn.click()
-        await human_wait(1, 2)
+        await asyncio.sleep(2)
 
-        # フォロー確認（ボタンが Following に変わる）
-        if await page.locator('[data-testid="following"]').count() > 0:
+        # フォロー確認
+        if await page.locator('[data-testid="following"], [data-testid="followingButton"]').count() > 0:
+            logger.info(f"  ✓ フォロー完了: @{username}")
+            return True
+        if await page.get_by_role("button", name="Following").count() > 0:
             logger.info(f"  ✓ フォロー完了: @{username}")
             return True
 
@@ -385,6 +398,10 @@ async def main():
         for username in candidates:
             if get_today_count(state) >= DAILY_FOLLOW_LIMIT:
                 logger.info("本日の上限に達しました。終了します。")
+                break
+
+            if followed_count >= RUN_FOLLOW_LIMIT:
+                logger.info(f"今回の実行上限 {RUN_FOLLOW_LIMIT} 人に達しました。終了します。")
                 break
 
             # 異常検知チェック
