@@ -1,0 +1,55 @@
+name: FX Auto Follow
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"   # 2時間おきに実行（GitHub Actions は無料枠 2000分/月）
+  workflow_dispatch:          # 手動実行ボタンも使えるようにする
+
+jobs:
+  follow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Restore cookies
+        run: |
+          echo "${{ secrets.X_COOKIES }}" | base64 -d > x_cookies.json
+          echo "Cookieファイルを復元しました"
+
+      - name: Restore follow state
+        uses: actions/cache@v4
+        with:
+          path: follow_state.json
+          key: follow-state-${{ github.run_id }}
+          restore-keys: |
+            follow-state-
+
+      - name: Run bot
+        env:
+          X_USERNAME: ${{ secrets.X_USERNAME }}
+          X_PASSWORD: ${{ secrets.X_PASSWORD }}
+          X_EMAIL: ${{ secrets.X_EMAIL }}
+          HEADLESS: "true"
+          DAILY_FOLLOW_LIMIT: "200"
+          RUN_FOLLOW_LIMIT: "15"
+          FOLLOW_DELAY_MIN: "15"
+          FOLLOW_DELAY_MAX: "30"
+        run: python fx_auto_follow.py
+
+      - name: Show log
+        if: always()
+        run: cat fx_follow.log 2>/dev/null || echo "(ログなし)"

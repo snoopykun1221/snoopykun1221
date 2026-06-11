@@ -122,25 +122,65 @@ async def follow_wait() -> None:
 # ── ログイン ────────────────────────────────────────────────────
 
 async def login(page: Page) -> bool:
-    logger.info("ブラウザを開きます。手動でXにログインしてください。")
+    """ヘッドレス環境では自動ログイン、それ以外は手動ログインを待機"""
     await page.goto("https://x.com/login", wait_until="load", timeout=60000)
-    logger.info("ログインが完了したら自動で次の処理に進みます（最大3分待機）...")
+    await asyncio.sleep(3)
 
-    # ユーザーが手動でログインするのを最大3分待つ
-    for _ in range(36):
-        await asyncio.sleep(5)
-        url = page.url
-        if "login" not in url and "onboarding" not in url and "x.com" in url:
-            timeline = await page.locator('[data-testid="primaryColumn"]').count()
-            if timeline > 0:
-                logger.info("ログイン成功を確認しました。")
-                return True
-    logger.error("3分以内にログインが確認できませんでした。")
-    return False
+    if HEADLESS:
+        # ヘッドレス（GitHub Actions等）: 自動入力でログイン
+        logger.info("自動ログインを試みます...")
+        try:
+            username_input = page.locator(
+                'input[name="text"], input[autocomplete="username"]'
+            ).first
+            await username_input.wait_for(timeout=15000)
+            await username_input.fill(X_USERNAME)
+            await human_wait(1, 2)
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(2)
 
+            # メールアドレス確認画面が出る場合
+            email_input = page.locator('input[data-testid="ocfEnterTextTextInput"]')
+            if await email_input.count() > 0:
+                await email_input.fill(X_EMAIL or X_USERNAME)
+                await human_wait(1, 2)
+                await page.keyboard.press("Enter")
+                await asyncio.sleep(2)
 
+            # パスワード入力
+            password_input = page.locator('input[name="password"], input[type="password"]').last
+            await password_input.wait_for(timeout=10000)
+            await password_input.fill(X_PASSWORD)
+            await human_wait(1, 2)
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(5)
 
-    return False
+            # ログイン確認
+            if "login" not in page.url and "onboarding" not in page.url:
+                timeline = await page.locator('[data-testid="primaryColumn"]').count()
+                if timeline > 0:
+                    logger.info("自動ログイン成功。")
+                    return True
+
+            logger.error(f"自動ログイン失敗。現在URL: {page.url}")
+            return False
+
+        except Exception as e:
+            logger.error(f"自動ログインエラー: {e}")
+            return False
+    else:
+        # 非ヘッドレス: 手動ログイン待機（最大3分）
+        logger.info("ブラウザが開きました。手動でXにログインしてください（最大3分）...")
+        for _ in range(36):
+            await asyncio.sleep(5)
+            url = page.url
+            if "login" not in url and "onboarding" not in url and "x.com" in url:
+                timeline = await page.locator('[data-testid="primaryColumn"]').count()
+                if timeline > 0:
+                    logger.info("ログイン成功を確認しました。")
+                    return True
+        logger.error("3分以内にログインが確認できませんでした。")
+        return False
 
 
 async def is_logged_in(page: Page) -> bool:
