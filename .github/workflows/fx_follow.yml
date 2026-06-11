@@ -27,7 +27,7 @@ jobs:
 
       - name: Restore cookies
         run: |
-          echo "${{ secrets.X_COOKIES }}" | base64 -d > x_cookies.json
+          echo "${{ secrets.X_COOKIES }}" | tr -d ' \n\r' | base64 -d > x_cookies.json
           echo "Cookieファイルを復元しました"
 
       - name: Restore follow state
