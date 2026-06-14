@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>note記事ジェネレーター</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f0;
+      --surface: #ffffff;
+      --surface2: #f0f0eb;
+      --border: #e0e0d8;
+      --text: #1a1a18;
+      --text2: #6b6b60;
+      --accent: #41b883;
+      --accent-dark: #2f9063;
+      --accent-light: #e8f8f1;
+      --danger: #e05555;
+      --tag-bg: #e8f8f1;
+      --tag-text: #2f9063;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.05);
+    }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-badge {
+      background: var(--accent);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 99px;
+      letter-spacing: 0.05em;
+    }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 24px;
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--text2);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: var(--surface2);
+    }
+
+    .panel-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text2);
+      margin-bottom: 6px;
+    }
+
+    .field input[type="text"],
+    .field input[type="password"],
+    .field textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus,
+    .field textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .field input[type="text"]#title {
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .tag-input-wrapper {
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      cursor: text;
+      transition: border-color 0.15s;
+      min-height: 46px;
+      align-items: flex-start;
+    }
+
+    .tag-input-wrapper:focus-within {
+      border-color: var(--accent);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+
+    .tag-remove {
+      cursor: pointer;
+      opacity: 0.6;
+      font-size: 14px;
+      line-height: 1;
+      border: none;
+      background: none;
+      color: inherit;
+      padding: 0;
+    }
+
+    .tag-remove:hover { opacity: 1; }
+
+    #keyword-input {
+      border: none;
+      outline: none;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text);
+      min-width: 120px;
+      flex: 1;
+      background: transparent;
+      padding: 2px 4px;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 4px;
+    }
+
+    .api-key-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .api-key-row input {
+      flex: 1;
+    }
+
+    .btn-icon {
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+
+    .btn-icon:hover { background: var(--border); }
+
+    .btn-generate {
+      width: 100%;
+      padding: 13px;
+      background: var(--accent);
+      color: white;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .btn-generate:hover:not(:disabled) { background: var(--accent-dark); }
+    .btn-generate:active:not(:disabled) { transform: scale(0.99); }
+    .btn-generate:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* Spinner */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2.5px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Right panel */
+    .output-panel {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .output-panel .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .output-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-sm {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .btn-sm:hover { background: var(--surface2); }
+    .btn-sm.primary { background: var(--accent-light); border-color: var(--accent); color: var(--accent-dark); }
+    .btn-sm.primary:hover { background: #d0f0e4; }
+    .btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #output-area {
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .placeholder-msg {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text2);
+      gap: 12px;
+      text-align: center;
+    }
+
+    .placeholder-msg .icon {
+      font-size: 48px;
+      opacity: 0.3;
+    }
+
+    .placeholder-msg p {
+      font-size: 14px;
+      max-width: 280px;
+      line-height: 1.6;
+    }
+
+    #article-text {
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 14px;
+      line-height: 1.85;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: none;
+    }
+
+    #article-text h1 { font-size: 20px; font-weight: 700; margin-bottom: 16px; line-height: 1.4; }
+    #article-text h2 { font-size: 16px; font-weight: 700; margin: 24px 0 10px; color: var(--text); }
+    #article-text h3 { font-size: 14px; font-weight: 700; margin: 16px 0 8px; }
+    #article-text p { margin-bottom: 12px; }
+    #article-text code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    #article-text pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+    #article-text pre code {
+      background: none;
+      color: inherit;
+      padding: 0;
+      font-size: 12px;
+    }
+    #article-text hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 20px 0;
+    }
+    #article-text ul, #article-text ol {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+    #article-text li { margin-bottom: 4px; }
+    #article-text strong { font-weight: 700; }
+    #article-text table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+    #article-text th, #article-text td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+    }
+    #article-text th { background: var(--surface2); font-weight: 600; }
+
+    .paid-divider {
+      background: linear-gradient(135deg, #fff8e1, #fff3cd);
+      border: 1px solid #f0c040;
+      border-radius: 8px;
+      padding: 12px 16px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: #8a6500;
+      margin: 20px 0;
+    }
+
+    .status-bar {
+      padding: 10px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text2);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-dot.generating {
+      background: var(--accent);
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    .status-dot.done { background: var(--accent); }
+    .status-dot.error { background: var(--danger); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .error-msg {
+      background: #fff0f0;
+      border: 1px solid #ffd0d0;
+      border-radius: 8px;
+      padding: 14px 16px;
+      color: var(--danger);
+      font-size: 13px;
+      line-height: 1.6;
+      display: none;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1a1a18;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+      .output-panel { min-height: 500px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    note記事ジェネレーター
+    <span class="logo-badge">AI</span>
+  </div>
+</header>
+
+<main>
+  <!-- 左パネル：入力 -->
+  <aside class="panel">
+    <div class="panel-header">設定</div>
+    <div class="panel-body">
+
+      <div class="field">
+        <label>記事タイトル <span style="color:#e05555">*</span></label>
+        <input type="text" id="title" placeholder="例：副業で月3万円稼げるようになった話">
+      </div>
+
+      <div class="field">
+        <label>キーワード・興味関心</label>
+        <div class="tag-input-wrapper" id="tag-wrapper">
+          <input type="text" id="keyword-input" placeholder="入力してEnterで追加">
+        </div>
+        <p class="hint">Enterまたは読点「、」で追加　例：副業、Python、自動化</p>
+      </div>
+
+      {% if not has_api_key %}
+      <div class="field" id="apikey-field">
+        <label>Anthropic APIキー</label>
+        <div class="api-key-row">
+          <input type="password" id="api-key" placeholder="sk-ant-...">
+          <button class="btn-icon" onclick="toggleApiKey()" title="表示/非表示">👁</button>
+        </div>
+        <p class="hint">
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">console.anthropic.com</a> で取得できます
+        </p>
+      </div>
+      {% endif %}
+
+      <button class="btn-generate" id="gen-btn" onclick="generate()">
+        <span class="spinner" id="spinner"></span>
+        <span id="btn-label">記事を生成する</span>
+      </button>
+
+    </div>
+  </aside>
+
+  <!-- 右パネル：出力 -->
+  <div class="panel output-panel">
+    <div class="panel-header">
+      <span>生成結果</span>
+      <div class="output-actions">
+        <button class="btn-sm" id="btn-raw" onclick="toggleView()" disabled>テキスト表示</button>
+        <button class="btn-sm primary" id="btn-copy" onclick="copyText()" disabled>コピー</button>
+        <button class="btn-sm" id="btn-dl" onclick="downloadText()" disabled>DL</button>
+      </div>
+    </div>
+
+    <div id="output-area">
+      <div class="placeholder-msg" id="placeholder">
+        <div class="icon">✍️</div>
+        <p>タイトルとキーワードを入力して「記事を生成する」を押してください</p>
+      </div>
+      <div class="error-msg" id="error-msg"></div>
+      <div id="article-text"></div>
+    </div>
+
+    <div class="status-bar">
+      <div>
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">待機中</span>
+      </div>
+      <span id="char-count"></span>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const tags = [];
+  let rawText = '';
+  let isRendered = true;
+  let isGenerating = false;
+
+  // --- Tag input ---
+  const keywordInput = document.getElementById('keyword-input');
+  const tagWrapper = document.getElementById('tag-wrapper');
+
+  keywordInput.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === '、') && keywordInput.value.trim()) {
+      e.preventDefault();
+      addTag(keywordInput.value.replace('、', '').trim());
+      keywordInput.value = '';
+    } else if (e.key === 'Backspace' && !keywordInput.value && tags.length) {
+      removeTag(tags.length - 1);
+    }
+  });
+
+  keywordInput.addEventListener('input', () => {
+    if (keywordInput.value.includes('、')) {
+      const parts = keywordInput.value.split('、');
+      parts.slice(0, -1).forEach(p => p.trim() && addTag(p.trim()));
+      keywordInput.value = parts[parts.length - 1];
+    }
+  });
+
+  tagWrapper.addEventListener('click', () => keywordInput.focus());
+
+  function addTag(text) {
+    if (!text || tags.includes(text) || tags.length >= 8) return;
+    tags.push(text);
+    renderTags();
+  }
+
+  function removeTag(i) {
+    tags.splice(i, 1);
+    renderTags();
+  }
+
+  function renderTags() {
+    const existing = tagWrapper.querySelectorAll('.tag');
+    existing.forEach(el => el.remove());
+    tags.forEach((t, i) => {
+      const el = document.createElement('span');
+      el.className = 'tag';
+      el.innerHTML = `${t}<button class="tag-remove" onclick="removeTag(${i})">×</button>`;
+      tagWrapper.insertBefore(el, keywordInput);
+    });
+  }
+
+  // --- API key toggle ---
+  function toggleApiKey() {
+    const input = document.getElementById('api-key');
+    if (input) input.type = input.type === 'password' ? 'text' : 'password';
+  }
+
+  // --- Generate ---
+  async function generate() {
+    if (isGenerating) return;
+
+    const title = document.getElementById('title').value.trim();
+    const apiKeyEl = document.getElementById('api-key');
+    const apiKey = apiKeyEl ? apiKeyEl.value.trim() : '';
+
+    if (!title) {
+      showToast('タイトルを入力してください');
+      document.getElementById('title').focus();
+      return;
+    }
+
+    isGenerating = true;
+    rawText = '';
+    setStatus('generating', '生成中...');
+    setButtons(false);
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'none';
+    document.getElementById('article-text').style.display = 'block';
+    document.getElementById('article-text').innerHTML = '';
+    document.getElementById('spinner').style.display = 'block';
+    document.getElementById('btn-label').textContent = '生成中...';
+    document.getElementById('gen-btn').disabled = true;
+    document.getElementById('char-count').textContent = '';
+    isRendered = true;
+    document.getElementById('btn-raw').textContent = 'テキスト表示';
+
+    try {
+      const resp = await fetch('/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, keywords: tags, api_key: apiKey })
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (!payload) continue;
+
+          try {
+            const data = JSON.parse(payload);
+            if (data.error) {
+              showError(data.error);
+              isGenerating = false;
+              resetBtn();
+              return;
+            }
+            if (data.chunk) {
+              rawText += data.chunk;
+              renderMarkdown(rawText);
+              updateCharCount();
+            }
+            if (data.done) {
+              setStatus('done', '生成完了');
+              setButtons(true);
+              isGenerating = false;
+              resetBtn();
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      showError('通信エラーが発生しました: ' + e.message);
+    }
+
+    isGenerating = false;
+    resetBtn();
+  }
+
+  function resetBtn() {
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('btn-label').textContent = '記事を生成する';
+    document.getElementById('gen-btn').disabled = false;
+  }
+
+  // --- Markdown renderer (simple) ---
+  function renderMarkdown(md) {
+    const el = document.getElementById('article-text');
+    if (!isRendered) {
+      el.style.whiteSpace = 'pre-wrap';
+      el.textContent = md;
+      return;
+    }
+
+    let html = md
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      // code blocks
+      .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+        `<pre><code>${code.trim()}</code></pre>`)
+      // inline code
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // headings
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      // paid divider
+      .replace(/＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝/g,
+        '<div class="paid-divider">有料エリアここから</div>')
+      // bold
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      // hr
+      .replace(/^---$/gm, '<hr>')
+      // lists
+      .replace(/^[-・] (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+      // tables (simple)
+      .replace(/\|(.+)\|/g, (m, row) => {
+        if (row.replace(/[-:|]+/g, '').trim() === '') return '';
+        const cells = row.split('|').map(c => c.trim()).filter(Boolean);
+        return `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`;
+      })
+      .replace(/(<tr>.*<\/tr>\n?)+/g, m => `<table>${m}</table>`)
+      // paragraphs
+      .replace(/(?<!\n)\n(?!\n)/g, '\n')
+      .replace(/\n\n+/g, '</p><p>')
+      .replace(/^(.+)$/, '<p>$1</p>');
+
+    el.innerHTML = html;
+    el.style.whiteSpace = 'normal';
+
+    // auto scroll to bottom while generating
+    const area = document.getElementById('output-area');
+    area.scrollTop = area.scrollHeight;
+  }
+
+  // --- Toggle view ---
+  function toggleView() {
+    const el = document.getElementById('article-text');
+    const btn = document.getElementById('btn-raw');
+    isRendered = !isRendered;
+    btn.textContent = isRendered ? 'テキスト表示' : 'プレビュー表示';
+    renderMarkdown(rawText);
+  }
+
+  // --- Copy ---
+  async function copyText() {
+    if (!rawText) return;
+    try {
+      await navigator.clipboard.writeText(rawText);
+      showToast('クリップボードにコピーしました');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = rawText;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('コピーしました');
+    }
+  }
+
+  // --- Download ---
+  function downloadText() {
+    if (!rawText) return;
+    const title = document.getElementById('title').value.trim() || '記事';
+    const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // --- Helpers ---
+  function setStatus(type, text) {
+    document.getElementById('status-dot').className = `status-dot ${type}`;
+    document.getElementById('status-text').textContent = text;
+  }
+
+  function setButtons(enabled) {
+    ['btn-copy', 'btn-dl', 'btn-raw'].forEach(id => {
+      document.getElementById(id).disabled = !enabled;
+    });
+  }
+
+  function updateCharCount() {
+    const len = rawText.length;
+    document.getElementById('char-count').textContent = `${len.toLocaleString()} 文字`;
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.style.display = 'block';
+    document.getElementById('article-text').style.display = 'none';
+    setStatus('error', 'エラー');
+  }
+
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // Enter key in title → generate
+  document.getElementById('title').addEventListener('keydown', e => {
+    if (e.key === 'Enter') generate();
+  });
+</script>
+</body>
+</html>
