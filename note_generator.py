@@ -78,6 +78,8 @@ def generate():
 架空でも構いませんが、リアリティのある具体的な数字・エピソードを入れてください。"""
 
     def stream():
+        # Safariは2KB未満だとバッファに溜めて表示しないため冒頭にパディングを送る
+        yield ': ' + ' ' * 2048 + '\n\n'
         try:
             client = anthropic.Anthropic(api_key=api_key)
             with client.messages.stream(
@@ -100,6 +102,7 @@ def generate():
         headers={
             'Cache-Control': 'no-cache',
             'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
         }
     )
 
