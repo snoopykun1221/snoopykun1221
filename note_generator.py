@@ -84,7 +84,7 @@ def generate():
             client = anthropic.Anthropic(api_key=api_key)
             with client.messages.stream(
                 model="claude-sonnet-4-6",
-                max_tokens=4096,
+                max_tokens=8192,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}]
             ) as s:
