@@ -53,6 +53,10 @@ def generate():
     data = request.json
     title = (data.get('title') or '').strip()
     keywords = [k.strip() for k in data.get('keywords', []) if k.strip()]
+    overview = (data.get('overview') or '').strip()
+    episodes = (data.get('episodes') or '').strip()
+    structure = (data.get('structure') or '').strip()
+    target = (data.get('target') or '').strip()
     user_api_key = (data.get('api_key') or '').strip()
 
     if not title:
@@ -69,13 +73,16 @@ def generate():
         )
 
     keywords_str = '、'.join(keywords) if keywords else 'なし'
-    user_prompt = f"""以下の条件でnote有料記事（1,000円）を書いてください。
-
-記事タイトル：{title}
-関連キーワード・テーマ：{keywords_str}
-
-タイトルとキーワードに忠実に、体験談ベースのリアルな記事を生成してください。
-架空でも構いませんが、リアリティのある具体的な数字・エピソードを入れてください。"""
+    user_prompt = f"以下の条件でnote有料記事（1,000円）を書いてください。\n\n記事タイトル：{title}\n関連キーワード・テーマ：{keywords_str}"
+    if target:
+        user_prompt += f"\nターゲット読者：{target}"
+    if overview:
+        user_prompt += f"\n\n記事の概要・伝えたいこと：\n{overview}"
+    if episodes:
+        user_prompt += f"\n\n含めたいエピソード・体験談：\n{episodes}"
+    if structure:
+        user_prompt += f"\n\n章立て（この構成を参考にしてください）：\n{structure}"
+    user_prompt += "\n\n上記の内容に忠実に、体験談ベースのリアルな記事を生成してください。架空でも構いませんが、リアリティのある具体的な数字・エピソードを入れてください。"
 
     def stream():
         # Safariは2KB未満だとバッファに溜めて表示しないため冒頭にパディングを送る
