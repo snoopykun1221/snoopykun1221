@@ -1,0 +1,17 @@
+{
+  "name": "reel-saver",
+  "version": "1.0.0",
+  "description": "Instagram リール等の動画・画像をURLを貼って保存できるサイト",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

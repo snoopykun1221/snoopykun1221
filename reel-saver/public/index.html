@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>リール保存 | Reel Saver</title>
+    <style>
+      :root {
+        --bg: #0f1020;
+        --card: #1b1c33;
+        --accent: #e1306c;
+        --accent2: #833ab4;
+        --text: #f2f2f7;
+        --muted: #9aa0b4;
+        --ok: #2ecc71;
+        --err: #ff5c72;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, system-ui, sans-serif;
+        background: radial-gradient(1200px 600px at 50% -10%, #2a1140 0%, var(--bg) 55%);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 60px;
+      }
+      header { text-align: center; margin: 24px 0 8px; }
+      .logo {
+        width: 66px; height: 66px; border-radius: 20px; margin: 0 auto 14px;
+        background: linear-gradient(45deg, #f9ce34, var(--accent) 50%, var(--accent2));
+        display: flex; align-items: center; justify-content: center;
+        font-size: 34px; box-shadow: 0 10px 30px rgba(225, 48, 108, 0.35);
+      }
+      h1 { font-size: 24px; margin: 0 0 6px; }
+      .sub { color: var(--muted); font-size: 14px; margin: 0; }
+      .card {
+        width: 100%; max-width: 560px; background: var(--card);
+        border: 1px solid rgba(255,255,255,0.06); border-radius: 18px;
+        padding: 22px; margin-top: 26px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      }
+      .row { display: flex; gap: 10px; }
+      input[type="url"] {
+        flex: 1; background: #12132a; border: 1px solid rgba(255,255,255,0.1);
+        color: var(--text); padding: 14px 16px; border-radius: 12px; font-size: 15px;
+        outline: none;
+      }
+      input[type="url"]:focus { border-color: var(--accent); }
+      button.go {
+        background: linear-gradient(45deg, var(--accent), var(--accent2));
+        color: #fff; border: 0; padding: 0 22px; border-radius: 12px;
+        font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap;
+      }
+      button.go:disabled { opacity: 0.5; cursor: not-allowed; }
+      .hint { color: var(--muted); font-size: 12px; margin: 12px 2px 0; }
+      .status { margin-top: 16px; font-size: 14px; min-height: 20px; }
+      .status.err { color: var(--err); }
+      .status.ok { color: var(--ok); }
+      .result { margin-top: 18px; display: none; }
+      .result.show { display: block; }
+      .meta { display: flex; gap: 14px; align-items: flex-start; }
+      .thumb {
+        width: 96px; height: 96px; border-radius: 12px; object-fit: cover;
+        background: #000; flex: none;
+      }
+      .meta .info { font-size: 13px; color: var(--muted); overflow: hidden; }
+      .meta .info .user { color: var(--text); font-weight: 700; margin-bottom: 4px; }
+      .caption {
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .downloads { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+      a.dl {
+        display: flex; align-items: center; justify-content: space-between;
+        background: #12132a; border: 1px solid rgba(255,255,255,0.1);
+        color: var(--text); text-decoration: none; padding: 13px 16px;
+        border-radius: 12px; font-size: 14px; font-weight: 600;
+      }
+      a.dl:hover { border-color: var(--accent); }
+      a.dl .badge {
+        font-size: 11px; padding: 3px 9px; border-radius: 999px;
+        background: rgba(225,48,108,0.2); color: #ffb3c8;
+      }
+      .spinner {
+        width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: #fff; border-radius: 50%; display: inline-block;
+        animation: spin 0.8s linear infinite; vertical-align: -3px; margin-right: 8px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      footer { margin-top: 30px; color: var(--muted); font-size: 12px; text-align: center; max-width: 520px; line-height: 1.7; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">📥</div>
+      <h1>リール保存</h1>
+      <p class="sub">Instagram のリール・投稿・動画を URL を貼るだけで保存</p>
+    </header>
+
+    <div class="card">
+      <div class="row">
+        <input
+          id="url"
+          type="url"
+          placeholder="https://www.instagram.com/reel/xxxxxxxxx/"
+          autocomplete="off"
+        />
+        <button class="go" id="go">保存</button>
+      </div>
+      <p class="hint">
+        リール / 投稿 (/p/) / IGTV (/tv/) の URL に対応。公開アカウントのみ取得できます。
+      </p>
+
+      <div class="status" id="status"></div>
+
+      <div class="result" id="result">
+        <div class="meta">
+          <img class="thumb" id="thumb" alt="thumbnail" />
+          <div class="info">
+            <div class="user" id="user"></div>
+            <div class="caption" id="caption"></div>
+          </div>
+        </div>
+        <div class="downloads" id="downloads"></div>
+      </div>
+    </div>
+
+    <footer>
+      ※ 本ツールで取得したコンテンツの著作権は各投稿者に帰属します。<br />
+      他人の作品の無断転載・再配布は Instagram 利用規約や著作権法に触れる場合があります。私的利用の範囲でご利用ください。
+    </footer>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const urlInput = $("url");
+      const goBtn = $("go");
+      const statusEl = $("status");
+      const resultEl = $("result");
+      const downloadsEl = $("downloads");
+
+      function setStatus(msg, kind) {
+        statusEl.className = "status" + (kind ? " " + kind : "");
+        statusEl.innerHTML = msg;
+      }
+
+      async function run() {
+        const url = urlInput.value.trim();
+        if (!url) {
+          setStatus("URL を入力してください。", "err");
+          return;
+        }
+        goBtn.disabled = true;
+        resultEl.classList.remove("show");
+        setStatus('<span class="spinner"></span>取得中...', "");
+
+        try {
+          const res = await fetch("/api/info", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || "取得に失敗しました。");
+          }
+
+          $("thumb").src = data.thumbnail || "";
+          $("user").textContent = data.username ? "@" + data.username : "取得完了";
+          $("caption").textContent = data.caption || "";
+
+          downloadsEl.innerHTML = "";
+          data.media.forEach((m, i) => {
+            const a = document.createElement("a");
+            a.className = "dl";
+            const label =
+              m.type === "video" ? "動画を保存" : "画像を保存";
+            const num = data.media.length > 1 ? ` (${i + 1})` : "";
+            a.innerHTML =
+              `<span>⬇ ${label}${num}</span><span class="badge">${m.type === "video" ? "MP4" : "JPG"}</span>`;
+            const q = new URLSearchParams({
+              url: m.url,
+              name: (data.shortcode || "reel") + (num ? "_" + (i + 1) : ""),
+              type: m.type,
+            });
+            a.href = "/api/download?" + q.toString();
+            downloadsEl.appendChild(a);
+          });
+
+          resultEl.classList.add("show");
+          setStatus("取得しました。下のボタンから保存できます。", "ok");
+        } catch (err) {
+          setStatus(err.message, "err");
+        } finally {
+          goBtn.disabled = false;
+        }
+      }
+
+      goBtn.addEventListener("click", run);
+      urlInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") run();
+      });
+    </script>
+  </body>
+</html>
