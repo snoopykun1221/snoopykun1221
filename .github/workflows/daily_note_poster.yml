@@ -1,0 +1,53 @@
+name: 毎日note記事を自動投稿
+
+on:
+  schedule:
+    # 毎日午前8時（UTC）に実行 = JST 17時
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  post-article:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python環境をセットアップ
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 依存関係をインストール
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Playwrightブラウザをインストール
+        run: |
+          playwright install chromium
+
+      - name: 記事を生成して投稿
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTE_EMAIL: ${{ secrets.NOTE_EMAIL }}
+          NOTE_PASSWORD: ${{ secrets.NOTE_PASSWORD }}
+        run: |
+          python note_auto_poster.py
+
+      - name: ログをアーティファクトとして保存
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: note-poster-logs
+          path: note_poster.log
+          retention-days: 30
+
+      - name: 投稿履歴を保存
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: posted-articles
+          path: posted_articles.jsonl
+          retention-days: 365
