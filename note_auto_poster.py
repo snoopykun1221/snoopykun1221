@@ -170,13 +170,52 @@ PAYWALL_MARKER = "＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝"
 
 
 async def set_paywall_boundary(page) -> None:
-    """有料エリアの境界（どこから有料か）を設定する。
+    """有料エリアの境界（どこから有料か）を記事内の目印の位置に移動する。
 
-    画面構造の調査が済むまでは、誤った位置で公開してしまわないよう明示的に中断する。
+    有料エリア設定画面では各段落の間に「ラインをこの場所に変更」ボタンが並んでおり、
+    初期状態では境界が記事の先頭（＝全文が有料）にある。
+    本文に埋め込んだ目印の直後のボタンを押して、無料部分と有料部分を分ける。
     """
-    raise Exception(
-        "有料エリアの境界設定は未実装です。inspectモードの調査結果を反映するまで公開しません。"
+    index = await page.evaluate(
+        """(marker) => {
+            const buttons = Array.from(document.querySelectorAll('button'))
+                .filter(b => (b.innerText || '').trim() === 'ラインをこの場所に変更');
+            const markerEl = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li'))
+                .find(el => (el.innerText || '').includes(marker));
+            if (!markerEl) return -1;
+            return buttons.findIndex(
+                b => markerEl.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
+            );
+        }""",
+        PAYWALL_MARKER,
     )
+    if index is None or index < 0:
+        raise Exception(
+            f"本文中の有料エリアの目印（{PAYWALL_MARKER}）が見つからず、境界を設定できませんでした"
+        )
+
+    button = page.locator('button:has-text("ラインをこの場所に変更")').nth(index)
+    await button.click()
+    logger.info(f"有料エリアの境界を目印の直後（{index}番目）に設定")
+    await page.wait_for_timeout(2000)
+
+    # 境界が目印より後ろに移動したかを確認する。移動していないと全文有料で公開されてしまう。
+    ok = await page.evaluate(
+        """(marker) => {
+            const line = Array.from(document.querySelectorAll('*'))
+                .find(el => (el.innerText || '').trim() === 'このラインより先を有料にする');
+            const markerEl = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li'))
+                .find(el => (el.innerText || '').includes(marker));
+            if (!line || !markerEl) return false;
+            return Boolean(
+                markerEl.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING
+            );
+        }""",
+        PAYWALL_MARKER,
+    )
+    if not ok:
+        raise Exception("有料エリアの境界が想定位置に移動しませんでした。全文有料を避けるため中断します")
+    logger.info("有料エリアの境界位置を確認")
 
 
 async def post_to_note(session_file: str, title: str, content: str) -> bool:
@@ -315,8 +354,12 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
                     # その画面の構造を調べる。
                     await click_first(page, ['button:has-text("有料エリア設定")'], "有料エリア設定ボタン")
                     await page.wait_for_timeout(4000)
-                    await log_visible_controls(page, "有料エリア設定画面")
-                    await dump_page_state(page, "有料エリア設定画面の中身")
+                    await set_paywall_boundary(page)
+                    await log_visible_controls(page, "境界設定後")
+                    publish_btn = page.locator('button:has-text("投稿する")').first
+                    enabled = await publish_btn.is_enabled()
+                    logger.info(f"投稿ボタンの状態: 有効={enabled}")
+                    await dump_page_state(page, "投稿直前の状態")
                 except Exception as e:
                     logger.warning(f"有料設定の調査で例外: {str(e)}")
                     await dump_page_state(page, "有料設定の調査で例外")
