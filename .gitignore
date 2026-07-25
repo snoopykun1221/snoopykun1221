@@ -2,6 +2,11 @@
 follow_state.json
 x_cookies.json
 fx_follow.log
+note_session.json
+note_poster.log
+posted_articles.jsonl
+note_error_screenshot.png
+note_error_page.html
 __pycache__/
 *.pyc
 .venv/

@@ -86,67 +86,33 @@ async def generate_article(topic: dict) -> str:
     logger.info(f"記事生成完了: {len(article_content)} 文字")
     return article_content
 
-async def post_to_note(email: str, password: str, title: str, content: str) -> bool:
-    """Playwrightを使用してnoteに投稿"""
+async def post_to_note(session_file: str, title: str, content: str) -> bool:
+    """Playwrightを使用してnoteに投稿（事前に保存したログインセッションを利用）"""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
+        context = await browser.new_context(storage_state=session_file)
         page = await context.new_page()
 
         try:
-            logger.info("noteログインページにアクセス中...")
-            await page.goto("https://note.com/login", wait_until="networkidle")
+            # 新規投稿ページへ（ログイン済みセッションを利用するためログイン操作は不要）
+            logger.info("新規投稿ページにアクセス中...")
+            await page.goto("https://note.com/my/notes/create", wait_until="networkidle")
 
-            # ログイン
-            logger.info("ログイン中...")
-            email_selectors = [
-                'input[type="email"]',
-                'input[autocomplete="username"]',
-                'input[name="email"]',
-                'input[type="text"]',
-            ]
-            email_field = None
-            for selector in email_selectors:
-                candidate = page.locator(selector).first
-                try:
-                    await candidate.wait_for(state="visible", timeout=5000)
-                    email_field = candidate
-                    logger.info(f"メール入力欄を発見: {selector}")
-                    break
-                except Exception:
-                    continue
-            if email_field is None:
-                raise Exception("メール/note ID入力欄が見つかりませんでした")
-            await email_field.fill(email)
-            await page.fill('input[type="password"]', password)
-            await page.get_by_role("button", name="ログイン").click()
-            await page.wait_for_load_state("networkidle")
-
-            # ホームページでログイン確認
             if "login" in page.url:
-                error_text = ""
-                try:
-                    error_text = await page.locator('body').inner_text()
-                except Exception:
-                    pass
-                logger.error(f"ログイン失敗（URL: {page.url}）")
-                if error_text:
-                    logger.error(f"ページ本文抜粋: {error_text[:500]}")
+                logger.error(
+                    "ログインセッションが無効です。note_login_setup.py を再実行して "
+                    "note_session.json を更新し、NOTE_SESSION_STATEシークレットも更新してください。"
+                )
                 try:
                     await page.screenshot(path="note_error_screenshot.png", full_page=True)
                     html = await page.content()
                     with open("note_error_page.html", "w", encoding="utf-8") as f:
                         f.write(html)
-                    logger.error("デバッグ情報を保存しました")
                 except Exception as debug_e:
                     logger.error(f"デバッグ情報の保存にも失敗: {str(debug_e)}")
                 return False
 
-            logger.info("ログイン成功")
-
-            # 新規投稿ページへ
-            logger.info("新規投稿ページにアクセス中...")
-            await page.goto("https://note.com/my/notes/create", wait_until="networkidle")
+            logger.info("ログイン済みセッションを確認")
 
             # タイトル入力
             logger.info("タイトル入力中...")
@@ -210,15 +176,16 @@ async def post_to_note(email: str, password: str, title: str, content: str) -> b
         finally:
             await browser.close()
 
+SESSION_FILE = "note_session.json"
+
 async def main():
     """メイン処理"""
     try:
-        # 環境変数確認
-        note_email = os.environ.get('NOTE_EMAIL')
-        note_password = os.environ.get('NOTE_PASSWORD')
-
-        if not note_email or not note_password:
-            logger.error("NOTE_EMAIL または NOTE_PASSWORD が設定されていません")
+        if not os.path.exists(SESSION_FILE):
+            logger.error(
+                f"{SESSION_FILE} が見つかりません。note_login_setup.py を実行して"
+                "ログインセッションを作成してください。"
+            )
             return False
 
         # トピック選択（ランダムまたはスケジュール）
@@ -229,7 +196,7 @@ async def main():
         content = await generate_article(topic)
 
         # noteに投稿
-        success = await post_to_note(note_email, note_password, topic['title'], content)
+        success = await post_to_note(SESSION_FILE, topic['title'], content)
 
         if success:
             logger.info(f"✅ 投稿成功: {topic['title']}")
