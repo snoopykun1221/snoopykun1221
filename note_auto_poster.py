@@ -134,12 +134,16 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
             if not clicked:
                 raise Exception("投稿ボタンが見つかりませんでした")
 
-            await page.wait_for_url("**editor.note.com/notes/**", timeout=15000)
+            await page.wait_for_url("**editor.note.com/**", timeout=15000)
             logger.info(f"エディタページに遷移: {page.url}")
 
-            # タイトル入力
+            # タイトル入力（editor.note.com/new → /notes/{id}/edit/ へのクライアント側遷移を
+            # タイトル欄の出現待ちとして吸収する）
             logger.info("タイトル入力中...")
-            await page.fill('textarea[placeholder*="タイトル"], input[placeholder*="タイトル"]', title)
+            title_field = page.locator('textarea[placeholder*="タイトル"], input[placeholder*="タイトル"]').first
+            await title_field.wait_for(state="visible", timeout=20000)
+            logger.info(f"エディタ準備完了: {page.url}")
+            await title_field.fill(title)
             await page.wait_for_timeout(500)
 
             # 本文入力
