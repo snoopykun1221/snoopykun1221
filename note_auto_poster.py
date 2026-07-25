@@ -140,14 +140,22 @@ async def set_paid_price(page, price: str = "1000") -> None:
     実機調査の結果、記事タイプはラジオ input[name="is_paid"]、
     価格欄は type="number" ではなく placeholder に最低価格が入った text input だった。
     """
-    paid_radio = page.locator('input[name="is_paid"][value="paid"]')
-    await paid_radio.wait_for(state="attached", timeout=8000)
-    await paid_radio.check(force=True)
+    # ラジオ本体はCSSで隠されており直接checkできないため、対応するlabelをクリックする
+    await click_first(page, ['label[for="paid"]', 'label:has-text("有料")'], "記事タイプ「有料」")
+    await page.wait_for_timeout(2000)
+
+    checked = await page.evaluate(
+        """() => {
+            const el = document.querySelector('input[name="is_paid"][value="paid"]');
+            return el ? el.checked : null;
+        }"""
+    )
+    if not checked:
+        raise Exception(f"記事タイプを有料に切り替えられませんでした（checked={checked}）")
     logger.info("記事タイプを有料に設定")
-    await page.wait_for_timeout(1500)
 
     price_input = page.locator(
-        'input[type="text"]:not([placeholder*="ハッシュタグ"])'
+        'input[placeholder="300"], input[type="text"]:not([placeholder*="ハッシュタグ"])'
     ).first
     await price_input.wait_for(state="visible", timeout=8000)
     await price_input.fill(price)
