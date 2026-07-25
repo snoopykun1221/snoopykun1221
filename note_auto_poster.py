@@ -176,22 +176,44 @@ async def set_paywall_boundary(page) -> None:
     初期状態では境界が記事の先頭（＝全文が有料）にある。
     本文に埋め込んだ目印の直後のボタンを押して、無料部分と有料部分を分ける。
     """
-    index = await page.evaluate(
+    # 目印を含む要素は入れ子になっており、外側のコンテナにマッチすると
+    # 記事先頭のボタンを選んでしまうため、最も内側の要素を使う。
+    info = await page.evaluate(
         """(marker) => {
             const buttons = Array.from(document.querySelectorAll('button'))
                 .filter(b => (b.innerText || '').trim() === 'ラインをこの場所に変更');
-            const markerEl = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li'))
-                .find(el => (el.innerText || '').includes(marker));
-            if (!markerEl) return -1;
-            return buttons.findIndex(
+            const candidates = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li, span'))
+                .filter(el => (el.innerText || '').includes(marker));
+            const markerEl = candidates.find(
+                el => !candidates.some(other => other !== el && el.contains(other))
+            );
+            if (!markerEl) {
+                return {index: -1, candidates: candidates.length, buttons: buttons.length};
+            }
+            const index = buttons.findIndex(
                 b => markerEl.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
             );
+            return {
+                index,
+                candidates: candidates.length,
+                buttons: buttons.length,
+                markerTag: markerEl.tagName,
+                markerText: (markerEl.innerText || '').slice(0, 60),
+            };
         }""",
         PAYWALL_MARKER,
     )
-    if index is None or index < 0:
+    logger.info(f"有料エリアの目印の解析結果: {info}")
+    index = info.get("index", -1)
+    if index < 0:
         raise Exception(
             f"本文中の有料エリアの目印（{PAYWALL_MARKER}）が見つからず、境界を設定できませんでした"
+        )
+    # 目印は記事の中盤にあるはずなので、先頭付近が選ばれた場合は解析ミスとみなす
+    if index < 2:
+        raise Exception(
+            f"有料エリアの境界が記事の先頭付近（{index}番目）と判定されました。"
+            "全文有料での公開を避けるため中断します"
         )
 
     button = page.locator('button:has-text("ラインをこの場所に変更")').nth(index)
@@ -200,22 +222,33 @@ async def set_paywall_boundary(page) -> None:
     await page.wait_for_timeout(2000)
 
     # 境界が目印より後ろに移動したかを確認する。移動していないと全文有料で公開されてしまう。
-    ok = await page.evaluate(
+    result = await page.evaluate(
         """(marker) => {
-            const line = Array.from(document.querySelectorAll('*'))
-                .find(el => (el.innerText || '').trim() === 'このラインより先を有料にする');
-            const markerEl = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li'))
-                .find(el => (el.innerText || '').includes(marker));
-            if (!line || !markerEl) return false;
-            return Boolean(
+            const lines = Array.from(document.querySelectorAll('*'))
+                .filter(el => (el.innerText || '').trim() === 'このラインより先を有料にする');
+            const line = lines.find(
+                el => !lines.some(other => other !== el && el.contains(other))
+            );
+            const candidates = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li, span'))
+                .filter(el => (el.innerText || '').includes(marker));
+            const markerEl = candidates.find(
+                el => !candidates.some(other => other !== el && el.contains(other))
+            );
+            if (!line || !markerEl) return {ok: false, reason: '要素が見つからない'};
+            const after = Boolean(
                 markerEl.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING
             );
+            const body = document.body.innerText || '';
+            const markerPos = body.indexOf(marker);
+            return {ok: after, freeRatio: markerPos > 0 ? markerPos / body.length : null};
         }""",
         PAYWALL_MARKER,
     )
-    if not ok:
-        raise Exception("有料エリアの境界が想定位置に移動しませんでした。全文有料を避けるため中断します")
-    logger.info("有料エリアの境界位置を確認")
+    if not result.get("ok"):
+        raise Exception(
+            f"有料エリアの境界が想定位置に移動しませんでした（{result}）。全文有料を避けるため中断します"
+        )
+    logger.info(f"有料エリアの境界位置を確認: {result}")
 
 
 async def post_to_note(session_file: str, title: str, content: str) -> bool:
