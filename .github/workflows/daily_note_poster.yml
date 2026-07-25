@@ -4,6 +4,11 @@ on:
   schedule:
     # 毎日午前8時（UTC）に実行 = JST 17時
     - cron: '0 8 * * *'
+  # 記事の見た目を修正中の一時設定。pushで下書きを作り、実際の表示を確認する。
+  # 修正が完了したら削除する。
+  push:
+    branches:
+      - claude/note-1000yen-article-e4xxm2
   workflow_dispatch:
     inputs:
       mode:
@@ -46,7 +51,10 @@ jobs:
       - name: 記事を生成して投稿
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          NOTE_PUBLISH_MODE: ${{ inputs.mode || 'publish' }}
+          # 記事の見た目を修正中のため、定期実行は下書き保存までで止める。
+          # 手動実行(workflow_dispatch)で mode を publish にすれば公開できる。
+          # 品質を確認できたら 'publish' に戻す。
+          NOTE_PUBLISH_MODE: ${{ inputs.mode || 'draft' }}
         run: |
           python note_auto_poster.py
 

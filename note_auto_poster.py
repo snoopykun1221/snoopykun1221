@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 from datetime import date, datetime
@@ -35,62 +36,74 @@ SYSTEM_PROMPT = """あなたは個別銘柄の解説記事を書く金融ライ�
 - 「！」「✓」「🎉」などの記号・絵文字は使わない
 - 断定的な推奨（「今すぐ買うべき」「必ず上がる」）はしない。判断材料を示し、判断は読者に委ねる
 
-【構造（必ずこの順番で）】
-1. # タイトル（与えられたタイトルをそのまま使う）
-2. ## この銘柄の要点（無料部分）
+【書式の厳守（noteに直接入力されるため重要）】
+- 見出しは「## 見出し文」の形式のみ使う。それ以外の記号は一切使わない
+- 記事タイトルは本文に書かない。「# タイトル」で始めてはいけない（タイトルは別欄に入るため二重になる）
+- 表（| 項目 | 値 |）は使用禁止。noteでは表として表示されず記号の羅列になる
+  数値を並べるときは「売上高：3兆1,080億円（前年同期比 +12.3%）」のように1行1項目で書く
+- 箇条書き記号（- や * や 1.）は使わない。文章か、上記の「項目：値」形式で書く
+- 太字（**）、引用（>）、コードブロック（```）も使わない
+- 見出しに「（無料部分）」「（有料部分）」などの注釈を書かない
+- セクションの区切り線や「ここから有料」といった案内文も書かない
+
+【構造（この見出しをこの順番で使う）】
+## この銘柄の要点
    - 3〜5行で「どんな会社で、いま何が論点か」を提示
    - タイトルが問いかけ形式の場合、記事全体でその問いに答える構成にする
      （「展望は？」なら見通しの材料を、「何で稼いでいるのか」なら収益構造を厚く書く）
-3. ## 事業内容（無料部分）
+## 事業内容
    - 何で稼いでいるのか、収益の柱を具体的に
-   - セグメント別の売上構成を表にする
-4. ＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝
-5. ## 業績の推移
-   - 直近数期の売上・利益を表で示す
-6. ## 株価と主要指標
-   - 株価、時価総額、PER、PBR、配当利回りを表で示し、同業他社と比較する
-7. ## 成長の driver（強み・追い風）
+   - セグメント別の売上構成を「項目：値」形式で
+## 業績の推移
+   - 直近数期の売上・営業利益・純利益を「項目：値」形式で
+## 株価と主要指標
+   - 株価、時価総額、PER、PBR、配当利回りを「項目：値」形式で。同業他社とも比較する
+## 強みと追い風
    - 2〜4個、それぞれ根拠となる数字とともに
-8. ## リスク要因
+## リスク要因
    - 2〜4個。競合、規制、為替、業績変動要因など具体的に
-9. ## まとめ
+## まとめ
    - 強気に見るなら何が根拠か、慎重に見るなら何が懸念か、両論を整理
-10. ## 参照した情報源
-    - 媒体名とURLを列挙
-11. 末尾に免責事項（下記の文言をそのまま入れる）
+## 参照した情報源
+   - 媒体名とURLを1行ずつ
+## 免責事項
+   - 下記の文言をそのまま記載する
 
-【免責事項（記事末尾にそのまま記載）】
+【免責事項の文言（そのまま記載）】
 本記事は特定の銘柄の売買を推奨するものではなく、情報提供を目的としています。記載の数値は執筆時点で公開されている情報にもとづきますが、正確性を保証するものではありません。投資判断はご自身の責任でお願いします。
 
 【必須要素】
-- 表を2つ以上（業績推移、主要指標の比較など）
 - 検索で裏付けた具体的な数値を10個以上
-- 分量：3000〜4500文字"""
+- 分量：3000〜4500文字
+
+【無料で読める範囲について】
+「この銘柄の要点」と「事業内容」までが無料で読める部分になる。
+この2つだけでも読んで良かったと思える密度にしつつ、続きが気になる終わり方にすること。"""
 
 # 1日1銘柄を解説する。日付でローテーションし、同じ銘柄が続かないようにする。
 STOCKS = [
-    {"name": "トヨタ自動車", "ticker": "7203", "market": "東証プライム"},
-    {"name": "ソニーグループ", "ticker": "6758", "market": "東証プライム"},
-    {"name": "三菱UFJフィナンシャル・グループ", "ticker": "8306", "market": "東証プライム"},
-    {"name": "任天堂", "ticker": "7974", "market": "東証プライム"},
-    {"name": "信越化学工業", "ticker": "4063", "market": "東証プライム"},
-    {"name": "東京エレクトロン", "ticker": "8035", "market": "東証プライム"},
-    {"name": "ファーストリテイリング", "ticker": "9983", "market": "東証プライム"},
-    {"name": "日立製作所", "ticker": "6501", "market": "東証プライム"},
-    {"name": "キーエンス", "ticker": "6861", "market": "東証プライム"},
-    {"name": "リクルートホールディングス", "ticker": "6098", "market": "東証プライム"},
-    {"name": "オリエンタルランド", "ticker": "4661", "market": "東証プライム"},
-    {"name": "武田薬品工業", "ticker": "4502", "market": "東証プライム"},
-    {"name": "NVIDIA", "ticker": "NVDA", "market": "NASDAQ"},
-    {"name": "Apple", "ticker": "AAPL", "market": "NASDAQ"},
-    {"name": "Microsoft", "ticker": "MSFT", "market": "NASDAQ"},
-    {"name": "Alphabet", "ticker": "GOOGL", "market": "NASDAQ"},
-    {"name": "Amazon.com", "ticker": "AMZN", "market": "NASDAQ"},
-    {"name": "Meta Platforms", "ticker": "META", "market": "NASDAQ"},
-    {"name": "Eli Lilly", "ticker": "LLY", "market": "NYSE"},
-    {"name": "Visa", "ticker": "V", "market": "NYSE"},
-    {"name": "Coca-Cola", "ticker": "KO", "market": "NYSE"},
-    {"name": "Costco Wholesale", "ticker": "COST", "market": "NASDAQ"},
+    {"name": "トヨタ自動車", "ticker": "7203", "market": "東証プライム", "image_keyword": "自動車"},
+    {"name": "ソニーグループ", "ticker": "6758", "market": "東証プライム", "image_keyword": "ゲーム"},
+    {"name": "三菱UFJフィナンシャル・グループ", "ticker": "8306", "market": "東証プライム", "image_keyword": "銀行"},
+    {"name": "任天堂", "ticker": "7974", "market": "東証プライム", "image_keyword": "ゲーム"},
+    {"name": "信越化学工業", "ticker": "4063", "market": "東証プライム", "image_keyword": "半導体"},
+    {"name": "東京エレクトロン", "ticker": "8035", "market": "東証プライム", "image_keyword": "半導体"},
+    {"name": "ファーストリテイリング", "ticker": "9983", "market": "東証プライム", "image_keyword": "アパレル"},
+    {"name": "日立製作所", "ticker": "6501", "market": "東証プライム", "image_keyword": "工場"},
+    {"name": "キーエンス", "ticker": "6861", "market": "東証プライム", "image_keyword": "工場"},
+    {"name": "リクルートホールディングス", "ticker": "6098", "market": "東証プライム", "image_keyword": "オフィス"},
+    {"name": "オリエンタルランド", "ticker": "4661", "market": "東証プライム", "image_keyword": "遊園地"},
+    {"name": "武田薬品工業", "ticker": "4502", "market": "東証プライム", "image_keyword": "医薬品"},
+    {"name": "NVIDIA", "ticker": "NVDA", "market": "NASDAQ", "image_keyword": "半導体"},
+    {"name": "Apple", "ticker": "AAPL", "market": "NASDAQ", "image_keyword": "スマートフォン"},
+    {"name": "Microsoft", "ticker": "MSFT", "market": "NASDAQ", "image_keyword": "パソコン"},
+    {"name": "Alphabet", "ticker": "GOOGL", "market": "NASDAQ", "image_keyword": "検索"},
+    {"name": "Amazon.com", "ticker": "AMZN", "market": "NASDAQ", "image_keyword": "物流倉庫"},
+    {"name": "Meta Platforms", "ticker": "META", "market": "NASDAQ", "image_keyword": "SNS"},
+    {"name": "Eli Lilly", "ticker": "LLY", "market": "NYSE", "image_keyword": "医薬品"},
+    {"name": "Visa", "ticker": "V", "market": "NYSE", "image_keyword": "クレジットカード"},
+    {"name": "Coca-Cola", "ticker": "KO", "market": "NYSE", "image_keyword": "飲料"},
+    {"name": "Costco Wholesale", "ticker": "COST", "market": "NASDAQ", "image_keyword": "スーパーマーケット"},
 ]
 
 def pick_stock_of_the_day(today: date) -> dict:
@@ -175,7 +188,54 @@ async def generate_article(stock: dict, title: str) -> str:
 
     searches = sum(1 for block in message.content if block.type == "server_tool_use")
     logger.info(f"記事生成完了: {len(article_content)} 文字 / web検索 {searches} 回")
-    return article_content
+    return sanitize_article(article_content, title)
+
+
+def sanitize_article(content: str, title: str) -> str:
+    """noteで崩れる書式を投稿前に取り除く。
+
+    システムプロンプトで禁止していても書式が混ざることがあり、そのまま入力すると
+    記号がそのまま記事に表示されてしまうため、ここで最終的に整える。
+    """
+    cleaned = []
+    removed = 0
+    for raw in content.split("\n"):
+        line = raw.rstrip()
+        stripped = line.strip()
+
+        # タイトルの重複（本文冒頭の「# タイトル」）を落とす
+        if stripped.lstrip("# ").strip() == title.strip():
+            removed += 1
+            continue
+        # 有料エリアの案内や区切り線は内部的なものなので記事に出さない
+        if "ここから有料" in stripped or set(stripped) <= {"＝", "=", "─", "-", "—", " "} and len(stripped) >= 3:
+            removed += 1
+            continue
+        # 表は表示されないため、記号を外して読める形に直す
+        if stripped.startswith("|") and stripped.endswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if all(set(c) <= {"-", ":", " "} for c in cells):  # 表の区切り行
+                removed += 1
+                continue
+            line = "：".join(c for c in cells if c)
+        else:
+            # 箇条書き記号を落とす
+            line = re.sub(r"^\s*[-*・]\s+", "", line)
+            line = re.sub(r"^\s*\d+\.\s+", "", line)
+
+        # 強調・引用・コード記法を外す
+        line = line.replace("**", "").replace("`", "")
+        line = re.sub(r"^\s*>\s?", "", line)
+        # 見出しの注釈（無料部分）などを外す
+        if line.lstrip().startswith("#"):
+            line = re.sub(r"（(無料|有料)部分）", "", line).rstrip()
+        cleaned.append(line)
+
+    # 連続する空行を1つにまとめる
+    result = re.sub(r"\n{3,}", "\n\n", "\n".join(cleaned)).strip()
+    if removed:
+        logger.info(f"記事の整形: 不要な行を{removed}行削除")
+    return result
 
 # "draft" なら下書き保存で止める（検証用）、"publish" なら実際に公開する
 PUBLISH_MODE = os.environ.get("NOTE_PUBLISH_MODE", "publish").strip().lower()
@@ -259,48 +319,159 @@ async def set_paid_price(page, price: str = "1000") -> None:
 
 PAYWALL_MARKER = "＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝"
 
+# 有料エリアの境界はこの見出しの直前に置く。本文に余計な目印を残さないため、
+# 記事の構成上必ず現れるこの見出しをアンカーとして使う。
+PAYWALL_ANCHOR_HEADING = "業績の推移"
+
+
+async def set_header_image(page, stock: dict) -> None:
+    """記事の見出し画像を設定する。
+
+    noteの「みんなのフォトギャラリー」から銘柄に合いそうな無料画像を選ぶ。
+    画像がなくても記事自体は成立するため、失敗しても投稿は続行する。
+    まずは画面構造を記録し、判明した手順で設定を試みる。
+    """
+    keyword = stock.get("image_keyword", "ビジネス")
+    try:
+        opened = await click_first(
+            page,
+            [
+                'button:has-text("画像を追加")',
+                'button:has-text("記事に画像を追加")',
+                'button:has-text("見出し画像")',
+                'figure button',
+            ],
+            "見出し画像の追加ボタン",
+            timeout=6000,
+        )
+        if not opened:
+            return
+        await page.wait_for_timeout(2500)
+        await log_visible_controls(page, "見出し画像の選択画面")
+
+        await click_first(
+            page,
+            [
+                'button:has-text("みんなのフォトギャラリー")',
+                'a:has-text("みんなのフォトギャラリー")',
+                'button:has-text("フォトギャラリー")',
+            ],
+            "みんなのフォトギャラリー",
+            timeout=6000,
+        )
+        await page.wait_for_timeout(2500)
+        await log_visible_controls(page, "フォトギャラリー画面")
+
+        search = page.locator('input[type="text"], input[type="search"]').first
+        await search.wait_for(state="visible", timeout=6000)
+        await search.fill(keyword)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(3500)
+
+        thumbnail = page.locator('img').nth(3)
+        await thumbnail.wait_for(state="visible", timeout=8000)
+        await thumbnail.click()
+        await page.wait_for_timeout(2000)
+        await log_visible_controls(page, "画像選択後")
+
+        await click_first(
+            page,
+            ['button:has-text("この画像を挿入")', 'button:has-text("保存")', 'button:has-text("適用")'],
+            "画像の確定ボタン",
+            timeout=6000,
+        )
+        await page.wait_for_timeout(3000)
+        logger.info(f"見出し画像を設定（検索語: {keyword}）")
+    except Exception as e:
+        # 画像は記事の必須要素ではないため、失敗しても投稿を止めない
+        logger.warning(f"見出し画像の設定をスキップします: {str(e)}")
+        await log_visible_controls(page, "見出し画像の設定に失敗した時点")
+        try:
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
+
+async def type_article_body(page, content: str) -> None:
+    """記事本文をnoteのエディタに入力する。
+
+    noteのエディタは「## 」と打つと見出しに変わる入力補助を持つが、
+    insert_text は貼り付け扱いになりこの変換が働かない（記号がそのまま残る）。
+    そのため見出し記号だけは keyboard.type で1文字ずつ打ち、変換を発火させる。
+    本文はそのまま insert_text で入れる（数千文字を1文字ずつ打つと極端に遅いため）。
+    """
+    heading_prefixes = ("#### ", "### ", "## ", "# ")
+    lines = content.split("\n")
+    headings = 0
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped:
+            prefix = next((p for p in heading_prefixes if stripped.startswith(p)), None)
+            if prefix:
+                # noteの見出しは2段階しかないため、###以降も小見出しに寄せる
+                marker = "# " if prefix == "# " else "## "
+                await page.keyboard.type(marker, delay=30)
+                await page.wait_for_timeout(60)
+                await page.keyboard.insert_text(stripped[len(prefix):])
+                headings += 1
+            else:
+                await page.keyboard.insert_text(stripped)
+        if i < len(lines) - 1:
+            await page.keyboard.press("Enter")
+
+    logger.info(f"本文入力完了: {len(content)} 文字 / {len(lines)} 行 / 見出し {headings} 個")
+    await page.wait_for_timeout(1500)
+
 
 async def set_paywall_boundary(page) -> None:
-    """有料エリアの境界（どこから有料か）を記事内の目印の位置に移動する。
+    """有料エリアの境界（どこから有料か）を設定する。
 
     有料エリア設定画面では各段落の間に「ラインをこの場所に変更」ボタンが並んでおり、
     初期状態では境界が記事の先頭（＝全文が有料）にある。
-    本文に埋め込んだ目印の直後のボタンを押して、無料部分と有料部分を分ける。
+    本文に目印の文字列を残すと記事にそのまま表示されてしまうため、
+    有料部分の先頭にあたる見出しをアンカーにして、その直前のボタンを押す。
     """
-    # 目印を含む要素は入れ子になっており、外側のコンテナにマッチすると
-    # 記事先頭のボタンを選んでしまうため、最も内側の要素を使う。
     info = await page.evaluate(
-        """(marker) => {
+        """(anchor) => {
             const buttons = Array.from(document.querySelectorAll('button'))
                 .filter(b => (b.innerText || '').trim() === 'ラインをこの場所に変更');
-            const candidates = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li, span'))
-                .filter(el => (el.innerText || '').includes(marker));
-            const markerEl = candidates.find(
+            // 見出し要素のうち、アンカー文言を含む最も内側のものを探す
+            const candidates = Array.from(
+                document.querySelectorAll('h1, h2, h3, h4, p, div, span')
+            ).filter(el => (el.innerText || '').trim().includes(anchor));
+            const anchorEl = candidates.find(
                 el => !candidates.some(other => other !== el && el.contains(other))
             );
-            if (!markerEl) {
+            if (!anchorEl) {
                 return {index: -1, candidates: candidates.length, buttons: buttons.length};
             }
-            const index = buttons.findIndex(
-                b => markerEl.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
-            );
+            // アンカーより前にあるボタンのうち、最も後ろのもの＝見出しの直前
+            let index = -1;
+            buttons.forEach((b, i) => {
+                if (anchorEl.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING) {
+                    index = i;
+                }
+            });
             return {
                 index,
                 candidates: candidates.length,
                 buttons: buttons.length,
-                markerTag: markerEl.tagName,
-                markerText: (markerEl.innerText || '').slice(0, 60),
+                anchorTag: anchorEl.tagName,
+                anchorText: (anchorEl.innerText || '').trim().slice(0, 40),
             };
         }""",
-        PAYWALL_MARKER,
+        PAYWALL_ANCHOR_HEADING,
     )
-    logger.info(f"有料エリアの目印の解析結果: {info}")
+    logger.info(f"有料エリアのアンカー解析結果: {info}")
     index = info.get("index", -1)
     if index < 0:
         raise Exception(
-            f"本文中の有料エリアの目印（{PAYWALL_MARKER}）が見つからず、境界を設定できませんでした"
+            f"有料部分の先頭となる見出し（{PAYWALL_ANCHOR_HEADING}）が本文に見つからず、"
+            "境界を設定できませんでした"
         )
-    # 目印は記事の中盤にあるはずなので、先頭付近が選ばれた場合は解析ミスとみなす
+    # アンカーは記事の中盤にあるはずなので、先頭付近なら解析ミスとみなす
     if index < 2:
         raise Exception(
             f"有料エリアの境界が記事の先頭付近（{index}番目）と判定されました。"
@@ -309,31 +480,32 @@ async def set_paywall_boundary(page) -> None:
 
     button = page.locator('button:has-text("ラインをこの場所に変更")').nth(index)
     await button.click()
-    logger.info(f"有料エリアの境界を目印の直後（{index}番目）に設定")
+    logger.info(f"有料エリアの境界を「{PAYWALL_ANCHOR_HEADING}」の直前（{index}番目）に設定")
     await page.wait_for_timeout(2000)
 
-    # 境界が目印より後ろに移動したかを確認する。移動していないと全文有料で公開されてしまう。
+    # 境界がアンカーより前に移動したかを確認する。失敗すると全文有料で公開されてしまう。
     result = await page.evaluate(
-        """(marker) => {
+        """(anchor) => {
             const lines = Array.from(document.querySelectorAll('*'))
                 .filter(el => (el.innerText || '').trim() === 'このラインより先を有料にする');
             const line = lines.find(
                 el => !lines.some(other => other !== el && el.contains(other))
             );
-            const candidates = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li, span'))
-                .filter(el => (el.innerText || '').includes(marker));
-            const markerEl = candidates.find(
+            const candidates = Array.from(
+                document.querySelectorAll('h1, h2, h3, h4, p, div, span')
+            ).filter(el => (el.innerText || '').trim().includes(anchor));
+            const anchorEl = candidates.find(
                 el => !candidates.some(other => other !== el && el.contains(other))
             );
-            if (!line || !markerEl) return {ok: false, reason: '要素が見つからない'};
-            const after = Boolean(
-                markerEl.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING
+            if (!line || !anchorEl) return {ok: false, reason: '要素が見つからない'};
+            const before = Boolean(
+                anchorEl.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_PRECEDING
             );
             const body = document.body.innerText || '';
-            const markerPos = body.indexOf(marker);
-            return {ok: after, freeRatio: markerPos > 0 ? markerPos / body.length : null};
+            const pos = body.indexOf(anchor);
+            return {ok: before, freeRatio: pos > 0 ? pos / body.length : null};
         }""",
-        PAYWALL_MARKER,
+        PAYWALL_ANCHOR_HEADING,
     )
     if not result.get("ok"):
         raise Exception(
@@ -433,6 +605,8 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
             await title_field.fill(title)
             await page.wait_for_timeout(500)
 
+            await set_header_image(page, stock)
+
             # 本文入力
             logger.info("本文入力中...")
             body = page.locator('div[contenteditable="true"]').first
@@ -440,16 +614,7 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
             await body.click()
             await page.wait_for_timeout(300)
 
-            # ブロックエディタなので、行ごとに挿入してEnterで次のブロックへ進める。
-            # keyboard.type は1文字ずつで数千文字だと極端に遅いため insert_text を使う。
-            lines = content.split("\n")
-            for i, line in enumerate(lines):
-                if line:
-                    await page.keyboard.insert_text(line)
-                if i < len(lines) - 1:
-                    await page.keyboard.press("Enter")
-            logger.info(f"本文入力完了: {len(content)} 文字 / {len(lines)} 行")
-            await page.wait_for_timeout(1500)
+            await type_article_body(page, content)
 
             await log_visible_controls(page, "エディタ画面")
 
