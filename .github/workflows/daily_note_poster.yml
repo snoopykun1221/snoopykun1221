@@ -26,7 +26,7 @@ jobs:
 
       - name: Playwrightブラウザをインストール
         run: |
-          playwright install chromium
+          playwright install --with-deps chromium
 
       - name: 記事を生成して投稿
         env:
@@ -38,7 +38,7 @@ jobs:
 
       - name: ログをアーティファクトとして保存
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: note-poster-logs
           path: note_poster.log
@@ -46,7 +46,7 @@ jobs:
 
       - name: 投稿履歴を保存
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: posted-articles
           path: posted_articles.jsonl
