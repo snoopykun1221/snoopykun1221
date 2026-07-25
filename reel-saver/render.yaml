@@ -1,0 +1,16 @@
+# Render (https://render.com) 用のデプロイ設定（Blueprint）。
+# GitHub リポジトリを Render に接続すると、このファイルを読んで自動で
+# Node.js アプリとして公開してくれます。
+services:
+  - type: web
+    name: reel-saver
+    runtime: node
+    plan: free
+    # リポジトリ直下ではなく reel-saver/ の中にアプリがあるため指定
+    rootDir: reel-saver
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
