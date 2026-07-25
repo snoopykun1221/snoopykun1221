@@ -128,9 +128,29 @@ GitHub リポジトリ設定 → Secrets に以下を追加：
 
 #### 4. ローカルでテスト
 
+いきなり公開せず、まず下書き保存だけを試すことをおすすめします。
+
 ```cmd
-python note_auto_poster.py
+NOTE_PUBLISH_MODE=draft python note_auto_poster.py   # 下書き保存で止める
+python note_auto_poster.py                            # 公開まで実行
 ```
+
+### 投稿の流れ
+
+`note_auto_poster.py` は、実際のnoteの画面操作を次の順で自動実行します。
+
+1. 保存済みセッションでログイン状態を復元（reCAPTCHA回避のため毎回のログインはしない）
+2. Claude APIで記事を生成
+3. トップページの「投稿」から `editor.note.com` の新規エディタへ
+4. タイトルと本文を入力
+5. 「公開に進む」→ 記事タイプ「有料」→ 価格1,000円
+6. 「有料エリア設定」で、本文中の目印 `＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝` の直後に境界を移動
+7. 「投稿する」
+
+**安全のための中断条件**（意図しない形で公開されるのを防ぐため、以下では公開せず失敗終了します）
+
+- 1,000円の有料設定ができなかったとき（無料公開の防止）
+- 有料エリアの境界が見つからない、または記事の先頭付近と判定されたとき（全文有料の防止）
 
 ### セッションの更新
 
@@ -141,9 +161,10 @@ python note_auto_poster.py
 
 #### GitHub Actions（推奨・無料）
 
-`.github/workflows/daily_note_poster.yml` で毎日午前8時（UTC）に自動実行。
+`.github/workflows/daily_note_poster.yml` で毎日午前8時（UTC）＝日本時間17時に自動実行。
 
 リポジトリのタブで **Actions** → **毎日note記事を自動投稿** → **Run workflow** で手動実行も可能。
+その際 **mode** を `draft` にすると、公開せず下書き保存だけで止められます。
 
 #### ローカルPC（Windows タスクスケジューラ）
 

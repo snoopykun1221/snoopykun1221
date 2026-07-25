@@ -86,12 +86,193 @@ async def generate_article(topic: dict) -> str:
     logger.info(f"記事生成完了: {len(article_content)} 文字")
     return article_content
 
+# "draft" なら下書き保存で止める（検証用）、"publish" なら実際に公開する
+PUBLISH_MODE = os.environ.get("NOTE_PUBLISH_MODE", "publish").strip().lower()
+
+
+async def log_visible_controls(page, label: str) -> None:
+    """画面上のボタン/リンクの文言を一覧でログに出す。セレクタ特定のための診断用。"""
+    try:
+        texts = await page.evaluate(
+            """() => Array.from(document.querySelectorAll('button, a[role="button"], a'))
+                .map(el => (el.innerText || '').trim())
+                .filter(t => t && t.length < 30)
+                .slice(0, 40)"""
+        )
+        logger.info(f"[{label}] URL={page.url} 操作可能な要素: {texts}")
+    except Exception as e:
+        logger.warning(f"[{label}] 要素一覧の取得に失敗: {str(e)}")
+
+
+async def dump_page_state(page, label: str) -> None:
+    """ページが期待通り描画されないときに、原因特定のため中身をログに出す。"""
+    try:
+        html = await page.content()
+        body_text = ""
+        try:
+            body_text = (await page.locator("body").inner_text())[:400]
+        except Exception:
+            pass
+        logger.warning(
+            f"[{label}] URL={page.url} HTML長={len(html)} 本文抜粋={body_text!r}"
+        )
+    except Exception as e:
+        logger.warning(f"[{label}] ページ状態の取得に失敗: {str(e)}")
+
+
+async def click_first(page, selectors: list, label: str, timeout: int = 8000):
+    """候補セレクタを順に試し、最初に見つかった要素をクリックする。"""
+    for selector in selectors:
+        element = page.locator(selector).first
+        try:
+            await element.wait_for(state="visible", timeout=timeout)
+            await element.click()
+            logger.info(f"{label}をクリック: {selector}")
+            return True
+        except Exception:
+            continue
+    raise Exception(f"{label}が見つかりませんでした（試したセレクタ: {selectors}）")
+
+
+async def set_paid_price(page, price: str = "1000") -> None:
+    """公開設定画面で記事タイプを有料にし、価格を設定する。
+
+    実機調査の結果、記事タイプはラジオ input[name="is_paid"]、
+    価格欄は type="number" ではなく placeholder に最低価格が入った text input だった。
+    """
+    # ラジオ本体はCSSで隠されており直接checkできないため、対応するlabelをクリックする
+    await click_first(page, ['label[for="paid"]', 'label:has-text("有料")'], "記事タイプ「有料」")
+    await page.wait_for_timeout(2000)
+
+    checked = await page.evaluate(
+        """() => {
+            const el = document.querySelector('input[name="is_paid"][value="paid"]');
+            return el ? el.checked : null;
+        }"""
+    )
+    if not checked:
+        raise Exception(f"記事タイプを有料に切り替えられませんでした（checked={checked}）")
+    logger.info("記事タイプを有料に設定")
+
+    price_input = page.locator(
+        'input[placeholder="300"], input[type="text"]:not([placeholder*="ハッシュタグ"])'
+    ).first
+    await price_input.wait_for(state="visible", timeout=8000)
+    await price_input.fill(price)
+    await page.wait_for_timeout(500)
+    actual = await price_input.input_value()
+    if actual != price:
+        raise Exception(f"価格の設定に失敗しました（入力後の値: {actual!r}）")
+    logger.info(f"価格を{price}円に設定")
+
+
+PAYWALL_MARKER = "＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝"
+
+
+async def set_paywall_boundary(page) -> None:
+    """有料エリアの境界（どこから有料か）を記事内の目印の位置に移動する。
+
+    有料エリア設定画面では各段落の間に「ラインをこの場所に変更」ボタンが並んでおり、
+    初期状態では境界が記事の先頭（＝全文が有料）にある。
+    本文に埋め込んだ目印の直後のボタンを押して、無料部分と有料部分を分ける。
+    """
+    # 目印を含む要素は入れ子になっており、外側のコンテナにマッチすると
+    # 記事先頭のボタンを選んでしまうため、最も内側の要素を使う。
+    info = await page.evaluate(
+        """(marker) => {
+            const buttons = Array.from(document.querySelectorAll('button'))
+                .filter(b => (b.innerText || '').trim() === 'ラインをこの場所に変更');
+            const candidates = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li, span'))
+                .filter(el => (el.innerText || '').includes(marker));
+            const markerEl = candidates.find(
+                el => !candidates.some(other => other !== el && el.contains(other))
+            );
+            if (!markerEl) {
+                return {index: -1, candidates: candidates.length, buttons: buttons.length};
+            }
+            const index = buttons.findIndex(
+                b => markerEl.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
+            );
+            return {
+                index,
+                candidates: candidates.length,
+                buttons: buttons.length,
+                markerTag: markerEl.tagName,
+                markerText: (markerEl.innerText || '').slice(0, 60),
+            };
+        }""",
+        PAYWALL_MARKER,
+    )
+    logger.info(f"有料エリアの目印の解析結果: {info}")
+    index = info.get("index", -1)
+    if index < 0:
+        raise Exception(
+            f"本文中の有料エリアの目印（{PAYWALL_MARKER}）が見つからず、境界を設定できませんでした"
+        )
+    # 目印は記事の中盤にあるはずなので、先頭付近が選ばれた場合は解析ミスとみなす
+    if index < 2:
+        raise Exception(
+            f"有料エリアの境界が記事の先頭付近（{index}番目）と判定されました。"
+            "全文有料での公開を避けるため中断します"
+        )
+
+    button = page.locator('button:has-text("ラインをこの場所に変更")').nth(index)
+    await button.click()
+    logger.info(f"有料エリアの境界を目印の直後（{index}番目）に設定")
+    await page.wait_for_timeout(2000)
+
+    # 境界が目印より後ろに移動したかを確認する。移動していないと全文有料で公開されてしまう。
+    result = await page.evaluate(
+        """(marker) => {
+            const lines = Array.from(document.querySelectorAll('*'))
+                .filter(el => (el.innerText || '').trim() === 'このラインより先を有料にする');
+            const line = lines.find(
+                el => !lines.some(other => other !== el && el.contains(other))
+            );
+            const candidates = Array.from(document.querySelectorAll('p, div, h1, h2, h3, li, span'))
+                .filter(el => (el.innerText || '').includes(marker));
+            const markerEl = candidates.find(
+                el => !candidates.some(other => other !== el && el.contains(other))
+            );
+            if (!line || !markerEl) return {ok: false, reason: '要素が見つからない'};
+            const after = Boolean(
+                markerEl.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING
+            );
+            const body = document.body.innerText || '';
+            const markerPos = body.indexOf(marker);
+            return {ok: after, freeRatio: markerPos > 0 ? markerPos / body.length : null};
+        }""",
+        PAYWALL_MARKER,
+    )
+    if not result.get("ok"):
+        raise Exception(
+            f"有料エリアの境界が想定位置に移動しませんでした（{result}）。全文有料を避けるため中断します"
+        )
+    logger.info(f"有料エリアの境界位置を確認: {result}")
+
+
 async def post_to_note(session_file: str, title: str, content: str) -> bool:
     """Playwrightを使用してnoteに投稿（事前に保存したログインセッションを利用）"""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(storage_state=session_file)
+        # noteのエディタはSPAで、ヘッドレス既定の環境だと起動しないことがあるため
+        # 実ブラウザに近い条件（UA・言語・画面サイズ）を明示する
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            storage_state=session_file,
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1440, "height": 900},
+            locale="ja-JP",
+            timezone_id="Asia/Tokyo",
+        )
         page = await context.new_page()
+        page.on("console", lambda msg: logger.info(f"[browser:{msg.type}] {msg.text[:200]}"))
+        page.on("pageerror", lambda err: logger.warning(f"[browser:pageerror] {str(err)[:300]}"))
 
         try:
             # noteトップページへ（ログイン済みセッションを利用するためログイン操作は不要）
@@ -134,53 +315,96 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
             if not clicked:
                 raise Exception("投稿ボタンが見つかりませんでした")
 
-            await page.wait_for_url("**editor.note.com/notes/**", timeout=15000)
+            await page.wait_for_url("**editor.note.com/**", timeout=15000)
             logger.info(f"エディタページに遷移: {page.url}")
 
-            # タイトル入力
+            # editor.note.com はSPAで、/new から /notes/{id}/edit/ へクライアント側遷移する。
+            # 描画が完了しないことがあるため、リロードを挟んで再試行する。
+            title_selector = 'textarea[placeholder*="タイトル"], input[placeholder*="タイトル"]'
+            title_field = None
+            for attempt in range(1, 4):
+                try:
+                    candidate = page.locator(title_selector).first
+                    await candidate.wait_for(state="visible", timeout=20000)
+                    title_field = candidate
+                    logger.info(f"エディタ準備完了（{attempt}回目）: {page.url}")
+                    break
+                except Exception:
+                    await dump_page_state(page, f"エディタ描画待ち{attempt}回目")
+                    if attempt < 3:
+                        logger.warning(f"エディタが描画されないためリロードします（{attempt}回目）")
+                        await page.reload(wait_until="networkidle")
+                        await page.wait_for_timeout(3000)
+            if title_field is None:
+                raise Exception("エディタのタイトル入力欄が描画されませんでした")
+
             logger.info("タイトル入力中...")
-            await page.fill('textarea[placeholder*="タイトル"], input[placeholder*="タイトル"]', title)
+            await title_field.fill(title)
             await page.wait_for_timeout(500)
 
             # 本文入力
             logger.info("本文入力中...")
-            # noteのエディタは複数存在する可能性があるので、複数試行
-            content_selectors = [
-                'div[contenteditable="true"]',
-                'textarea[placeholder*="本文"], textarea[placeholder*="内容"]',
-                '.editor-content'
-            ]
+            body = page.locator('div[contenteditable="true"]').first
+            await body.wait_for(state="visible", timeout=15000)
+            await body.click()
+            await page.wait_for_timeout(300)
 
-            for selector in content_selectors:
-                elements = await page.query_selector_all(selector)
-                if elements and len(elements) > 1:  # 本文は通常2番目のエディタ
-                    await elements[1].click()
-                    await page.keyboard.type(content, delay=1)
-                    break
+            # ブロックエディタなので、行ごとに挿入してEnterで次のブロックへ進める。
+            # keyboard.type は1文字ずつで数千文字だと極端に遅いため insert_text を使う。
+            lines = content.split("\n")
+            for i, line in enumerate(lines):
+                if line:
+                    await page.keyboard.insert_text(line)
+                if i < len(lines) - 1:
+                    await page.keyboard.press("Enter")
+            logger.info(f"本文入力完了: {len(content)} 文字 / {len(lines)} 行")
+            await page.wait_for_timeout(1500)
 
-            await page.wait_for_timeout(1000)
+            await log_visible_controls(page, "エディタ画面")
+
+            # 公開処理で失敗しても記事が失われないよう、先に下書きとして保存する
+            await click_first(page, ['button:has-text("下書き保存")'], "下書き保存ボタン")
+            await page.wait_for_timeout(3000)
+            logger.info("下書き保存完了")
+
+            if PUBLISH_MODE == "draft":
+                logger.info("下書き保存モードのため、公開せずに終了します")
+                return True
+
+            # 公開設定画面へ
+            logger.info("公開設定画面へ遷移中...")
+            await click_first(page, ['button:has-text("公開に進む")', 'a:has-text("公開に進む")'], "公開に進むボタン")
+            await page.wait_for_timeout(3000)
+            await log_visible_controls(page, "公開設定画面")
 
             # 価格設定（1,000円）
+            # 有料設定に失敗したまま公開すると意図せず無料公開されてしまい取り返しがつかないため、
+            # ここで失敗した場合は公開せずに中断する。
             logger.info("価格設定中...")
-            # 有料化ボタンを探す
-            paid_button = await page.query_selector('button:has-text("有料化")')
-            if paid_button:
-                await paid_button.click()
-                await page.wait_for_timeout(500)
+            try:
+                await set_paid_price(page, "1000")
+            except Exception as price_e:
+                await dump_page_state(page, "価格設定失敗")
+                raise Exception(
+                    f"1,000円の有料設定ができませんでした。無料公開を避けるため公開を中断します: {str(price_e)}"
+                )
 
-                # 価格入力
-                price_input = await page.query_selector('input[placeholder*="価格"], input[type="number"]')
-                if price_input:
-                    await price_input.fill("1000")
+            # 有料記事は本文のどこから有料かを指定しないと投稿できない
+            logger.info("有料エリアを設定中...")
+            await click_first(page, ['button:has-text("有料エリア設定")'], "有料エリア設定ボタン")
+            await page.wait_for_timeout(4000)
+            await log_visible_controls(page, "有料エリア設定画面")
+            await set_paywall_boundary(page)
 
-            await page.wait_for_timeout(500)
-
-            # 投稿ボタンをクリック
-            logger.info("投稿中...")
-            publish_button = await page.query_selector('button:has-text("投稿")')
-            if publish_button:
-                await publish_button.click()
-                await page.wait_for_load_state("networkidle")
+            # 公開
+            logger.info("公開中...")
+            await click_first(
+                page,
+                ['button:has-text("投稿する")', 'button:has-text("公開する")'],
+                "公開ボタン",
+            )
+            await page.wait_for_timeout(5000)
+            await log_visible_controls(page, "公開後の画面")
 
             logger.info("投稿完了")
             return True

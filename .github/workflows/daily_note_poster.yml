@@ -5,6 +5,15 @@ on:
     # 毎日午前8時（UTC）に実行 = JST 17時
     - cron: '0 8 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: '実行モード（publish=公開 / draft=下書き保存のみ）'
+        required: false
+        default: publish
+        type: choice
+        options:
+          - publish
+          - draft
 
 jobs:
   post-article:
@@ -37,6 +46,7 @@ jobs:
       - name: 記事を生成して投稿
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTE_PUBLISH_MODE: ${{ inputs.mode || 'publish' }}
         run: |
           python note_auto_poster.py
 
