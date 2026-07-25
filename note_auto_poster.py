@@ -134,6 +134,43 @@ async def click_first(page, selectors: list, label: str, timeout: int = 8000):
     raise Exception(f"{label}が見つかりませんでした（試したセレクタ: {selectors}）")
 
 
+async def set_paid_price(page, price: str = "1000") -> None:
+    """公開設定画面で記事タイプを有料にし、価格を設定する。
+
+    実機調査の結果、記事タイプはラジオ input[name="is_paid"]、
+    価格欄は type="number" ではなく placeholder に最低価格が入った text input だった。
+    """
+    paid_radio = page.locator('input[name="is_paid"][value="paid"]')
+    await paid_radio.wait_for(state="attached", timeout=8000)
+    await paid_radio.check(force=True)
+    logger.info("記事タイプを有料に設定")
+    await page.wait_for_timeout(1500)
+
+    price_input = page.locator(
+        'input[type="text"]:not([placeholder*="ハッシュタグ"])'
+    ).first
+    await price_input.wait_for(state="visible", timeout=8000)
+    await price_input.fill(price)
+    await page.wait_for_timeout(500)
+    actual = await price_input.input_value()
+    if actual != price:
+        raise Exception(f"価格の設定に失敗しました（入力後の値: {actual!r}）")
+    logger.info(f"価格を{price}円に設定")
+
+
+PAYWALL_MARKER = "＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝"
+
+
+async def set_paywall_boundary(page) -> None:
+    """有料エリアの境界（どこから有料か）を設定する。
+
+    画面構造の調査が済むまでは、誤った位置で公開してしまわないよう明示的に中断する。
+    """
+    raise Exception(
+        "有料エリアの境界設定は未実装です。inspectモードの調査結果を反映するまで公開しません。"
+    )
+
+
 async def post_to_note(session_file: str, title: str, content: str) -> bool:
     """Playwrightを使用してnoteに投稿（事前に保存したログインセッションを利用）"""
     async with async_playwright() as p:
@@ -263,21 +300,18 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
                 )
                 await page.wait_for_timeout(4000)
                 await log_visible_controls(page, "公開設定画面")
-                await dump_page_state(page, "公開設定画面の中身")
                 try:
-                    await click_first(page, ['button:has-text("有料")', 'label:has-text("有料")'], "有料設定")
-                    await page.wait_for_timeout(2000)
-                    await log_visible_controls(page, "有料設定を選択した後")
-                    await dump_page_state(page, "有料設定を選択した後の中身")
-                    inputs = await page.evaluate(
-                        """() => Array.from(document.querySelectorAll('input')).map(el => ({
-                            type: el.type, name: el.name, placeholder: el.placeholder,
-                            value: el.value ? el.value.slice(0, 20) : ''
-                        }))"""
-                    )
-                    logger.info(f"[有料設定後] input要素一覧: {inputs}")
+                    await set_paid_price(page)
+                    await log_visible_controls(page, "価格設定後")
+                    # 有料記事は「有料エリア設定」で本文の境界を決めないと投稿できない。
+                    # その画面の構造を調べる。
+                    await click_first(page, ['button:has-text("有料エリア設定")'], "有料エリア設定ボタン")
+                    await page.wait_for_timeout(4000)
+                    await log_visible_controls(page, "有料エリア設定画面")
+                    await dump_page_state(page, "有料エリア設定画面の中身")
                 except Exception as e:
                     logger.warning(f"有料設定の調査で例外: {str(e)}")
+                    await dump_page_state(page, "有料設定の調査で例外")
                 logger.info("調査完了（公開はしていません。下書きとして残っています）")
                 return True
 
@@ -292,24 +326,25 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
             # ここで失敗した場合は公開せずに中断する。
             logger.info("価格設定中...")
             try:
-                await click_first(page, ['button:has-text("有料")', 'label:has-text("有料")'], "有料設定")
-                await page.wait_for_timeout(1000)
-                price_input = page.locator('input[type="number"], input[placeholder*="価格"], input[name*="price"]').first
-                await price_input.wait_for(state="visible", timeout=5000)
-                await price_input.fill("1000")
-                logger.info("価格を1000円に設定")
-                await page.wait_for_timeout(500)
+                await set_paid_price(page, "1000")
             except Exception as price_e:
                 await dump_page_state(page, "価格設定失敗")
                 raise Exception(
                     f"1,000円の有料設定ができませんでした。無料公開を避けるため公開を中断します: {str(price_e)}"
                 )
 
+            # 有料記事は本文のどこから有料かを指定しないと投稿できない
+            logger.info("有料エリアを設定中...")
+            await click_first(page, ['button:has-text("有料エリア設定")'], "有料エリア設定ボタン")
+            await page.wait_for_timeout(4000)
+            await log_visible_controls(page, "有料エリア設定画面")
+            await set_paywall_boundary(page)
+
             # 公開
             logger.info("公開中...")
             await click_first(
                 page,
-                ['button:has-text("公開する")', 'button:has-text("投稿する")', 'button:has-text("公開")'],
+                ['button:has-text("投稿する")', 'button:has-text("公開する")'],
                 "公開ボタン",
             )
             await page.wait_for_timeout(5000)
