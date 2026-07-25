@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 import anthropic
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
@@ -18,72 +18,163 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """あなたは20代のOL兼個人投資家で、noteで有料記事（1,000円）を月20本以上販売している実力派です。
-投資初心者ではなく、実際に利益を出している女性投資家として、読者が「この人の経験、真似したい」と思う記事を書いてください。
+SYSTEM_PROMPT = """あなたは個別銘柄の解説記事を書く金融ライターです。
+1銘柄を1記事で掘り下げ、読者がその企業を理解して自分で投資判断できる材料を提供してください。
 
-【絶対に守るルール】
-- 一人称は「私」で統一
-- 文末は「〜だった」「〜した」「〜だと思う」の実体験調
+【最重要：事実にもとづくこと】
+- 株価・時価総額・PER・PBR・配当利回り・業績などの数値は、必ずweb検索で取得した実際のデータのみを使う
+- 検索で確認できなかった数値は書かない。「◯◯円」と推測で埋めることは絶対にしない
+- 数値には必ず基準日を添える（例：株価3,240円（2026年7月25日終値））
+- 記事末尾に参照した情報源（媒体名とURL）を列挙する
+- 決算の数字は「会社発表」「四半期報告書」など出典が明確なものを使う
+
+【文体】
+- 一人称は使わない。筆者個人の体験談・売買記録・保有状況は一切書かない
+- 「私は買った」「利益が出た」といった個人の実績を装う記述は禁止
+- 客観的な解説調（「〜である」「〜と考えられる」）
 - 「！」「✓」「🎉」などの記号・絵文字は使わない
-- 「〜しましょう」「〜ください」という上から目線は避ける
-- 抽象論・一般論は避け、必ず「いつ・いくら・何を・何回」など具体的な数字と銘柄・ツール名で語る
-- 「同僚と違う視点」「OLだからこそ気づいたこと」を必ず1つ以上入れる
-- 失敗と成功の両方を生々しく、感情的に描写する
+- 断定的な推奨（「今すぐ買うべき」「必ず上がる」）はしない。判断材料を示し、判断は読者に委ねる
 
-【差別化のための必須要素】
-- 普通の投資ブログにない「ここだけの話」感を演出する
-- 心理的な葛藤：「給料が減るんじゃないかと怖かった」「同僚に隠していた」など
-- 女性だからこその工夫：「生活費は貯金で確保、給料は全額投資」など独自の戦略
-- 利益確定時の喜び、損切り時の悔しさなど、感情のリアルさ
-- タイミングの秘密：「なぜあの時買ったのか」という心理的背景
-
-【構造】
-1. # タイトル
-2. ## 読む前に（無料部分）
-3. ## [結果の概要]（無料部分）
+【構造（必ずこの順番で）】
+1. # タイトル（与えられたタイトルをそのまま使う）
+2. ## この銘柄の要点（無料部分）
+   - 3〜5行で「どんな会社で、いま何が論点か」を提示
+   - タイトルが問いかけ形式の場合、記事全体でその問いに答える構成にする
+     （「展望は？」なら見通しの材料を、「何で稼いでいるのか」なら収益構造を厚く書く）
+3. ## 事業内容（無料部分）
+   - 何で稼いでいるのか、収益の柱を具体的に
+   - セグメント別の売上構成を表にする
 4. ＝＝＝＝＝ ここから有料エリア ＝＝＝＝＝
-5. ## [実体験セクション]×3〜5個（有料部分）
-6. ## 私が失敗した話（最重要）
-7. ## 同僚にはまだ言えない本音
-8. ## まとめ
+5. ## 業績の推移
+   - 直近数期の売上・利益を表で示す
+6. ## 株価と主要指標
+   - 株価、時価総額、PER、PBR、配当利回りを表で示し、同業他社と比較する
+7. ## 成長の driver（強み・追い風）
+   - 2〜4個、それぞれ根拠となる数字とともに
+8. ## リスク要因
+   - 2〜4個。競合、規制、為替、業績変動要因など具体的に
+9. ## まとめ
+   - 強気に見るなら何が根拠か、慎重に見るなら何が懸念か、両論を整理
+10. ## 参照した情報源
+    - 媒体名とURLを列挙
+11. 末尾に免責事項（下記の文言をそのまま入れる）
 
-記事は「同じOLとして真似したい」「この人の次の記事も読みたい」と思わせることが最優先。"""
+【免責事項（記事末尾にそのまま記載）】
+本記事は特定の銘柄の売買を推奨するものではなく、情報提供を目的としています。記載の数値は執筆時点で公開されている情報にもとづきますが、正確性を保証するものではありません。投資判断はご自身の責任でお願いします。
 
-INVESTMENT_TOPICS = [
-    {"title": "月給25万円のOLが年間200万円稼いだ日本株投資法", "keywords": ["日本株", "銘柄選定", "短期売買"]},
-    {"title": "米国株ETFで給料の3倍を短期間で増やした方法", "keywords": ["米国株", "ETF", "配当"]},
-    {"title": "仮想通貨で失敗した私が利益を出すまでの全記録", "keywords": ["仮想通貨", "リスク管理", "タイミング"]},
-    {"title": "FXで月3万円を安定して稼ぐOLの取引戦略", "keywords": ["FX", "スイングトレード", "損切り"]},
-    {"title": "給料を全額投資に回すOLが実践する資金管理術", "keywords": ["資金管理", "貯金", "投資割合"]},
-    {"title": "同僚に隠したまま5年で1000万円を作った投資戦略", "keywords": ["長期投資", "複利", "継続"]},
-    {"title": "26歳OLが経験した投資詐欺から学んだ教訓", "keywords": ["詐欺対策", "情報リテラシー", "警戒"]},
-    {"title": "忙しいOL向け：朝5分で完結する投資判断法", "keywords": ["時間効率", "スクリーニング", "判断基準"]},
+【必須要素】
+- 表を2つ以上（業績推移、主要指標の比較など）
+- 検索で裏付けた具体的な数値を10個以上
+- 分量：3000〜4500文字"""
+
+# 1日1銘柄を解説する。日付でローテーションし、同じ銘柄が続かないようにする。
+STOCKS = [
+    {"name": "トヨタ自動車", "ticker": "7203", "market": "東証プライム"},
+    {"name": "ソニーグループ", "ticker": "6758", "market": "東証プライム"},
+    {"name": "三菱UFJフィナンシャル・グループ", "ticker": "8306", "market": "東証プライム"},
+    {"name": "任天堂", "ticker": "7974", "market": "東証プライム"},
+    {"name": "信越化学工業", "ticker": "4063", "market": "東証プライム"},
+    {"name": "東京エレクトロン", "ticker": "8035", "market": "東証プライム"},
+    {"name": "ファーストリテイリング", "ticker": "9983", "market": "東証プライム"},
+    {"name": "日立製作所", "ticker": "6501", "market": "東証プライム"},
+    {"name": "キーエンス", "ticker": "6861", "market": "東証プライム"},
+    {"name": "リクルートホールディングス", "ticker": "6098", "market": "東証プライム"},
+    {"name": "オリエンタルランド", "ticker": "4661", "market": "東証プライム"},
+    {"name": "武田薬品工業", "ticker": "4502", "market": "東証プライム"},
+    {"name": "NVIDIA", "ticker": "NVDA", "market": "NASDAQ"},
+    {"name": "Apple", "ticker": "AAPL", "market": "NASDAQ"},
+    {"name": "Microsoft", "ticker": "MSFT", "market": "NASDAQ"},
+    {"name": "Alphabet", "ticker": "GOOGL", "market": "NASDAQ"},
+    {"name": "Amazon.com", "ticker": "AMZN", "market": "NASDAQ"},
+    {"name": "Meta Platforms", "ticker": "META", "market": "NASDAQ"},
+    {"name": "Eli Lilly", "ticker": "LLY", "market": "NYSE"},
+    {"name": "Visa", "ticker": "V", "market": "NYSE"},
+    {"name": "Coca-Cola", "ticker": "KO", "market": "NYSE"},
+    {"name": "Costco Wholesale", "ticker": "COST", "market": "NASDAQ"},
 ]
 
-async def generate_article(topic: dict) -> str:
-    """Claude APIで記事を生成"""
+def pick_stock_of_the_day(today: date) -> dict:
+    """日付でローテーションし、毎日違う銘柄を選ぶ。"""
+    return STOCKS[today.toordinal() % len(STOCKS)]
+
+
+# タイトルの問いかけ。読者が知りたいことを見出しにする。
+# 銘柄数(22)と互いに素な個数にして、銘柄と問いかけの組み合わせが長く一巡しないようにする。
+TITLE_PATTERNS = [
+    "{stock}、これからの展望は？",
+    "{stock}は今どうなっている？業績と株価を追う",
+    "{stock}の強みとリスクを整理する",
+    "{stock}は何で稼いでいるのか",
+    "{stock}、いま何が論点か",
+    "{stock}の決算から見えてきたこと",
+    "{stock}をゼロから理解する",
+]
+
+
+def build_title(stock: dict, today: date) -> str:
+    pattern = TITLE_PATTERNS[today.toordinal() % len(TITLE_PATTERNS)]
+    return f"【{stock['ticker']}】" + pattern.format(stock=stock["name"])
+
+
+async def generate_article(stock: dict, title: str) -> str:
+    """Claude APIで個別銘柄の解説記事を生成する。
+
+    株価や業績は日々変わるため、web検索ツールで実際のデータを取得させたうえで書かせる。
+    検索なしで書かせると、もっともらしい嘘の数値が並ぶことになる。
+    """
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
-    keywords_str = '、'.join(topic['keywords'])
-    user_prompt = f"""以下の条件でnote有料記事（1,000円）を書いてください。
+    today = date.today().strftime("%Y年%m月%d日")
+    user_prompt = f"""今日は{today}です。以下の銘柄について、note有料記事（1,000円）を書いてください。
 
-記事タイトル：{topic['title']}
-関連キーワード・テーマ：{keywords_str}
-ターゲット読者：20代女性、投資初心者から中級者
+銘柄：{stock['name']}（{stock['market']}：{stock['ticker']}）
+記事タイトル：{title}
 
-上記の内容に忠実に、体験談ベースのリアルな記事を生成してください。架空でも構いませんが、リアリティのある具体的な数字・エピソードを入れてください。"""
+まずweb検索で以下を調べ、確認できた事実だけを使って記事を書いてください。
+- 直近の株価、時価総額、PER、PBR、配当利回り
+- 直近の決算（売上高、営業利益、純利益）と前年同期比
+- セグメント別の売上構成
+- 直近のニュース（新製品、業績修正、経営方針など）
+- 同業他社の主要指標（比較のため）
 
-    logger.info(f"記事生成開始: {topic['title']}")
+検索で確認できなかった項目は、無理に埋めず「公開情報では確認できなかった」と明記してください。
+数値には必ず基準日を添え、記事末尾に参照した情報源のURLを列挙してください。"""
 
-    message = client.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=8192,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}]
-    )
+    logger.info(f"記事生成開始（web検索あり）: {title}")
 
-    article_content = message.content[0].text
-    logger.info(f"記事生成完了: {len(article_content)} 文字")
+    messages = [{"role": "user", "content": user_prompt}]
+    tools = [{"type": "web_search_20260209", "name": "web_search"}]
+
+    # web検索を伴う応答はサーバ側のループが上限に達すると pause_turn で一旦返るため、
+    # 完了するまで同じ会話を送り直して再開させる。
+    for attempt in range(5):
+        message = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=8192,
+            system=SYSTEM_PROMPT,
+            tools=tools,
+            messages=messages,
+        )
+        if message.stop_reason != "pause_turn":
+            break
+        logger.info(f"web検索が継続中のため再開します（{attempt + 1}回目）")
+        messages = [
+            {"role": "user", "content": user_prompt},
+            {"role": "assistant", "content": message.content},
+        ]
+
+    if message.stop_reason == "refusal":
+        raise Exception("記事生成が安全性の理由で拒否されました")
+
+    # web検索を使うと content に検索結果ブロックが混ざるため、本文のテキストだけを取り出す
+    article_content = "\n".join(
+        block.text for block in message.content if block.type == "text"
+    ).strip()
+    if not article_content:
+        raise Exception(f"記事本文が生成されませんでした（stop_reason={message.stop_reason}）")
+
+    searches = sum(1 for block in message.content if block.type == "server_tool_use")
+    logger.info(f"記事生成完了: {len(article_content)} 文字 / web検索 {searches} 回")
     return article_content
 
 # "draft" なら下書き保存で止める（検証用）、"publish" なら実際に公開する
@@ -435,28 +526,31 @@ async def main():
             )
             return False
 
-        # トピック選択（ランダムまたはスケジュール）
-        import random
-        topic = random.choice(INVESTMENT_TOPICS)
+        # 今日の解説対象銘柄（日付でローテーション）
+        today = date.today()
+        stock = pick_stock_of_the_day(today)
+        title = build_title(stock, today)
+        logger.info(f"本日の銘柄: {stock['name']}（{stock['ticker']}）")
 
         # 記事生成
-        content = await generate_article(topic)
+        content = await generate_article(stock, title)
 
         # noteに投稿
-        success = await post_to_note(SESSION_FILE, topic['title'], content)
+        success = await post_to_note(SESSION_FILE, title, content)
 
         if success:
-            logger.info(f"✅ 投稿成功: {topic['title']}")
+            logger.info(f"✅ 投稿成功: {title}")
             # 投稿履歴を記録
             with open('posted_articles.jsonl', 'a', encoding='utf-8') as f:
                 f.write(json.dumps({
                     'timestamp': datetime.now().isoformat(),
-                    'title': topic['title'],
+                    'title': title,
+                    'ticker': stock['ticker'],
                     'status': 'success'
                 }, ensure_ascii=False) + '\n')
             return True
         else:
-            logger.error(f"❌ 投稿失敗: {topic['title']}")
+            logger.error(f"❌ 投稿失敗: {title}")
             return False
 
     except Exception as e:
