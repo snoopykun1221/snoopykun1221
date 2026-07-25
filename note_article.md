@@ -1,0 +1,426 @@
+# 月3万円の副収入を自動化した話｜ChatGPT×Pythonで「働かずに稼ぐ仕組み」を作るまでの全記録
+
+---
+
+## 読む前に
+
+これ、ノウハウ系の記事によくある「実は簡単でした！」みたいな話じゃないです。
+
+最初の1ヶ月は全然うまくいかなかったし、Pythonのエラーで深夜2時まで格闘して「向いてないかも」って思ったこともある。でもそれを乗り越えた先に、今の仕組みができた。
+
+だから、「初月から10万円！」みたいな期待値で読むと、ちょっと違うかもしれない。半年くらいかけてじわじわ積み上げる話です。
+
+それでも読んでくれるなら、知ってることは全部書く。
+
+---
+
+## なんで自動化を始めたのか
+
+去年の11月のこと。
+
+クラウドワークスのライティング案件を3つ掛け持ちしてたんですけど、月の収入が4万2千円だった。時間で割ったら正直バイト以下。「副業してる意味あるのかな」って本気で思い始めて。
+
+で、このまま続けてもスケールしないじゃないですか。自分が書いた記事が売れる数だけ稼げるんだから、上限がある。
+
+じゃあ「自分が動かなくても稼げる仕組みを作ろう」と思ったのが始まりです。
+
+最初はアフィリエイトサイトを考えたんですけど、GoogleのSEOは今しんどい（知り合いが1ヶ月で収益ゼロになってた）。次に考えたのが、Pythonで何かを自動化することでした。
+
+プログラミングはほぼ未経験。大学の授業でCを少しやったくらい。でもChatGPTがあれば、コードは書けなくても動くものは作れる——これが後でわかる。
+
+---
+
+## 全体像を先に見せる
+
+細かい手順の前に、今どういう仕組みで動いているかを書いておきます。
+
+**自動化している主なこと：**
+
+- Xで関連キーワードをポストしてるユーザーを毎朝フォロー（1日30〜50アカウント）
+- ニュースサイトの情報を自動収集してNotionに整理
+- noteの記事ネタをChatGPTで5パターン案出し
+
+**これで何が起きたか：**
+
+フォロワーが月に300〜500人ペースで増えるようになって、noteの売上が安定した。自動化前は月1〜3件だった有料記事の購入が、今は月15〜20件くらいある。
+
+単価1,000円の記事が20件売れたら2万円。それに500円の記事とかマガジンを合わせると、先月は3万1,800円だった。
+
+全部自動かというとそうじゃなくて、記事を書いたり反応を確認したりで週3時間くらいはかかってる。でも以前みたいに「時間=収入」じゃなくなった。それだけで全然違う。
+
+---
+
+## 環境構築——ここだけは最初にやってほしい
+
+### 必要なもの（全部無料）
+
+| ツール | なんのため |
+|--------|-----------|
+| Python 3.10以上 | スクリプトを動かす |
+| GitHubアカウント | コードの管理と自動実行 |
+| VS Code | コードを書くエディタ |
+| ChatGPT（無料でOK） | コードを生成してもらう |
+
+お金は一切かからない。最初に有料ツールを買わせようとする話は怪しいので気をつけてください。
+
+### Pythonを入れる
+
+Windowsの人は `python.org` からインストーラを落として実行するだけ。一個だけ注意点があって、インストール画面で「Add Python to PATH」というチェックボックスが出てくる。これを絶対にオンにしてください。これを忘れるとあとで面倒なことになります（1敗）。
+
+Macの人はターミナルで
+
+```bash
+brew install python
+```
+
+Homebrewが入ってなければそこからですが、Homebrewのサイトに手順が書いてあります。
+
+### GitHubアカウントを作る
+
+`github.com` でメールアドレスを登録するだけです。5分で終わる。
+
+GitHubは「コードを保存する場所」として使うんですが、今回の肝は **GitHub Actions** という機能です。これを使うと、**クラウド上でPythonスクリプトを定期実行できる**。月2,000分まで無料。
+
+毎朝9時に自動でプログラムが動く——自分のパソコンを起動していなくても。これが実現できると、ライフスタイルが変わります。
+
+---
+
+## ChatGPTでコードを作る技術
+
+ここが一番重要なところかもしれない。
+
+「Pythonが書けないから無理」と思ってる人に言いたいんですが、今はコードを「書く」必要ないんですよ。ChatGPTに「作って」もらえばいい。
+
+でも、指示の仕方が雑だと雑なコードが返ってくる。いくつかコツがある。
+
+### コツ1：「何をしたいか」じゃなく「どう動いてほしいか」を書く
+
+悪い例：「Xを自動操作するコードを書いて」
+
+良い例：
+```
+XにPythonでログインして、検索窓に「ドル円」と入力し、
+検索結果に表示されたツイートの投稿者を最大20人フォローするコードを書いてください。
+フォローの間は5〜10秒のランダムな待機時間を入れてください。
+ライブラリはseleniumとundetected-chromedriverを使ってください。
+ログインIDとパスワードはコードに直書きせず、環境変数から読み込んでください。
+```
+
+動作のステップを細かく書くと、精度が上がる。
+
+### コツ2：エラーはそのままコピペして聞く
+
+```
+以下のエラーが出ました。直してください。
+
+エラーメッセージ：
+（エラーをそのままペースト）
+
+コード：
+（コードをペースト）
+
+環境：Python 3.11, Windows 11
+```
+
+これで大体直ります。「エラーが出ました、どうすればいいですか？」みたいな聞き方だと答えが曖昧になるので、情報を全部渡す。
+
+### コツ3：動いたら「何をしているか説明して」と聞く
+
+自分で理解できないコードは、後で改造できないし、エラーが出たときに対処できない。動いたら「各行に日本語でコメントを追加して」と頼むと、勉強にもなるし管理しやすくなります。
+
+---
+
+## GitHub Actionsの設定——ここが自動化の核心
+
+### フォルダ構成
+
+GitHubのリポジトリ（プロジェクトの保存場所）に、こういう構成でファイルを置く。
+
+```
+my-auto-project/
+├── .github/
+│   └── workflows/
+│       └── daily.yml      ← 自動実行の設定
+├── main.py                ← メインスクリプト
+└── requirements.txt       ← 使うライブラリの一覧
+```
+
+### 自動実行の設定ファイル
+
+`.github/workflows/daily.yml` に以下を書く。
+
+```yaml
+name: 毎日の自動実行
+
+on:
+  schedule:
+    # 毎朝9時（日本時間）に実行
+    # GitHub ActionsはUTC基準なので9時間引く = UTC 0時
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # 手動でも動かせるようにしておく
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pythonセットアップ
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: ライブラリをインストール
+        run: pip install -r requirements.txt
+
+      - name: スクリプトを実行
+        env:
+          X_USERNAME: ${{ secrets.X_USERNAME }}
+          X_PASSWORD: ${{ secrets.X_PASSWORD }}
+        run: python main.py
+```
+
+### パスワードの安全な管理
+
+GitHubのリポジトリ設定から `Settings → Secrets and variables → Actions → New repository secret` でパスワードを登録する。
+
+コードにパスワードを直書きして、リポジトリをPublicにしてしまうと世界中に流出するので絶対にやめること。これは本当に気をつけてほしい（実際にやらかした人を知ってる）。
+
+登録したSecretは `${{ secrets.変数名 }}` で呼び出せる。コードの中では `os.environ["X_USERNAME"]` で受け取る。
+
+---
+
+## 実際に動かしているコード
+
+### X自動フォローツールの核心部分
+
+ChatGPTに作ってもらったコードを、自分でカスタマイズして使っているバージョン。
+
+```python
+import time
+import random
+import os
+import logging
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+import undetected_chromedriver as uc
+
+# ログ設定（何が起きたか記録する）
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(message)s',
+    handlers=[
+        logging.FileHandler('follow_log.txt', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+
+MAX_FOLLOWS = 30  # 1回の実行で最大30人まで
+
+def random_wait(min_sec=3, max_sec=8):
+    """人間っぽい待機時間を入れる"""
+    wait = random.uniform(min_sec, max_sec)
+    time.sleep(wait)
+
+def login(driver, username, password):
+    driver.get("https://x.com/login")
+    time.sleep(3)
+    
+    # ユーザー名を入力
+    username_field = driver.find_element(By.NAME, "text")
+    username_field.send_keys(username)
+    username_field.send_keys(Keys.RETURN)
+    random_wait()
+    
+    # パスワードを入力
+    password_field = driver.find_element(By.NAME, "password")
+    password_field.send_keys(password)
+    password_field.send_keys(Keys.RETURN)
+    random_wait(4, 7)
+    logging.info("ログイン完了")
+
+def search_and_follow(driver, keyword, max_count):
+    driver.get(f"https://x.com/search?q={keyword}&f=live")
+    random_wait(3, 5)
+    
+    followed = 0
+    follow_buttons = driver.find_elements(By.XPATH, "//button[.//span[text()='フォロー']]")
+    
+    for button in follow_buttons:
+        if followed >= max_count:
+            logging.info(f"上限({max_count}件)に達したので終了")
+            break
+        try:
+            button.click()
+            followed += 1
+            logging.info(f"{followed}人目をフォロー")
+            random_wait()  # フォローのたびに待機
+        except Exception as e:
+            logging.warning(f"フォロー失敗: {e}")
+            continue
+    
+    return followed
+
+def main():
+    username = os.environ["X_USERNAME"]
+    password = os.environ["X_PASSWORD"]
+    
+    options = uc.ChromeOptions()
+    options.add_argument("--headless")  # 画面なしで実行（サーバー向け）
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    
+    driver = uc.Chrome(options=options)
+    
+    try:
+        login(driver, username, password)
+        
+        keywords = ["FX 分析", "ドル円 予想", "為替 トレード"]
+        total = 0
+        
+        for keyword in keywords:
+            if total >= MAX_FOLLOWS:
+                break
+            remaining = MAX_FOLLOWS - total
+            count = search_and_follow(driver, keyword, remaining)
+            total += count
+            logging.info(f"キーワード「{keyword}」: {count}人フォロー")
+            random_wait(10, 20)  # キーワード変更時は長めに待つ
+        
+        logging.info(f"本日の合計: {total}人フォロー")
+    
+    finally:
+        driver.quit()
+
+if __name__ == "__main__":
+    main()
+```
+
+これをそのままコピーして、GitHubのリポジトリに `main.py` として保存すれば動く（`requirements.txt` に `selenium` と `undetected-chromedriver` を書くのも忘れずに）。
+
+### 情報収集→要約ツール
+
+RSSでニュースを集めて、ChatGPT APIで要約する。
+
+```python
+import feedparser
+import openai
+import os
+from datetime import datetime
+
+def collect_news():
+    # 興味のあるサイトのRSSを追加していく
+    rss_feeds = [
+        "https://www.bloomberg.co.jp/feeds/bbiz",
+        "https://jp.reuters.com/rssFeed/JPBusinessNews",
+    ]
+    
+    client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    today = datetime.now().strftime("%Y年%m月%d日")
+    results = []
+    
+    for url in rss_feeds:
+        feed = feedparser.parse(url)
+        
+        # 各サイトから最新の3件だけ取得
+        for entry in feed.entries[:3]:
+            title = entry.title
+            body = entry.get("summary", "")[:400]
+            
+            # ChatGPT APIで要約
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",  # 安くて速い
+                messages=[{
+                    "role": "user",
+                    "content": f"この記事を2〜3文で要約してください。専門用語は避けてください。\n\nタイトル: {title}\n内容: {body}"
+                }]
+            )
+            
+            results.append({
+                "date": today,
+                "title": title,
+                "summary": response.choices[0].message.content,
+                "url": entry.link
+            })
+    
+    return results
+
+if __name__ == "__main__":
+    news = collect_news()
+    for item in news:
+        print(f"\n📰 {item['title']}")
+        print(f"→ {item['summary']}")
+        print(f"URL: {item['url']}")
+```
+
+ChatGPT APIのgpt-4o-miniは本当に安くて、1日50記事要約しても月に数百円くらい。コスパがいい。
+
+---
+
+## 収益化の現実的な流れ
+
+夢を見ないために書いておくと、最初の1〜2ヶ月は収益ほぼゼロです。
+
+フォロワーが増えてきて、信頼が積み重なって、初めて売れ始める。焦らないことが大事。
+
+### 0〜1ヶ月目：仕組みを整える
+
+- 環境構築とツールの動作確認
+- 無料のnote記事を3〜5本書く（有料記事を買ってもらうための実績作り）
+- 自動フォローを毎朝動かし始める
+
+収益：ほぼ0円。でもフォロワーは増え始める。
+
+### 2〜3ヶ月目：最初の売上を作る
+
+フォロワーが500〜800人になってきたら、300〜500円の有料記事を出してみる。
+
+最初は安い設定にする理由がある。読者にとっての「試しやすさ」と、自分にとっての「レビューとフィードバックを集める機会」になるから。
+
+この時期に月3,000〜1万円くらいになると思う。
+
+### 4〜6ヶ月目：単価を上げる
+
+実績が溜まってきたら、1,000円の記事を出せる。フォロワーからの信頼があれば、売れる。
+
+過去の記事をまとめたマガジン（980円くらい）も効果的。個別に買うより安くなるので購入率が上がる。
+
+この時期から月2〜3万円の目処が立ってくる。
+
+---
+
+## 失敗談と教訓
+
+うまくいった話だけ書くのもフェアじゃないので、失敗も書く。
+
+**失敗1：フォロー上限を設けなかった**
+
+最初、1日100人フォローするように設定したら3日目にアカウントが機能制限された。Xには1日のフォロー上限があって（非公式だけど50人くらいが安全圏）、超えると一時制限がかかる。今は30人/日に設定してる。
+
+**失敗2：コードをそのままPublicリポジトリに入れた**
+
+ログインIDとパスワードを環境変数にしてたのは良かったんだけど、誤ってテスト用のパスワードをコード内にコメントで書いたまま公開してしまった。すぐに変更したけど、ヒヤリとした。GitHubに上げる前のチェックは大事。
+
+**失敗3：ツール作りにハマりすぎた**
+
+2ヶ月目に「もっと高機能にしよう」とツール改造ばかりして、記事を全然書かなかった。売れるのは記事なので、ツールは「そこそこ動けばいい」と割り切ることにした。
+
+---
+
+## まとめ
+
+改めて整理すると：
+
+1. ChatGPTにコードを作ってもらう（プログラミング知識は最低限でOK）
+2. GitHub Actionsで毎日自動実行（サーバー代ゼロ、電気代ゼロ）
+3. フォロワーが増える→noteの売上が増える
+4. 記事を書き続けることが最終的に一番大事
+
+仕組みを作ったあとも、何もしなくていいわけじゃない。でも「時間を売る」から「仕組みを育てる」に変わると、積み上がっていく感覚がある。それが楽しくて続けられてる気がしています。
+
+コードで詰まったことがあればコメントで聞いてください。わかる範囲で答えます。
+
+---
+
+*各プラットフォームの利用規約は随時更新されます。自動化ツールの使用前に、必ず最新の規約をご確認ください。*

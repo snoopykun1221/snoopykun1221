@@ -90,3 +90,61 @@ python fx_auto_follow.py
 - `fx_follow.log` — 実行ログ
 - `follow_state.json` — フォロー済みユーザーと日別カウント
 - `x_cookies.json` — ログインセッション保存（再ログイン省略用）
+
+---
+
+## note記事自動投稿機能
+
+20代OL投資家向けのnote記事を毎日自動生成して、noteに自動投稿します。
+
+### セットアップ
+
+#### 1. note ログイン情報を `.env` に追加
+
+```
+ANTHROPIC_API_KEY=your_api_key
+NOTE_EMAIL=your_note_email@example.com
+NOTE_PASSWORD=your_note_password
+```
+
+#### 2. GitHub Secrets を設定（GitHub Actions使用時）
+
+GitHub リポジトリ設定 → Secrets に以下を追加：
+
+- `ANTHROPIC_API_KEY` — Claude APIキー
+- `NOTE_EMAIL` — noteのメールアドレス
+- `NOTE_PASSWORD` — noteのパスワード
+
+#### 3. ローカルでテスト
+
+```cmd
+python note_auto_poster.py
+```
+
+### 自動実行設定
+
+#### GitHub Actions（推奨・無料）
+
+`.github/workflows/daily_note_poster.yml` で毎日午前8時（UTC）に自動実行。
+
+リポジトリのタブで **Actions** → **毎日note記事を自動投稿** → **Run workflow** で手動実行も可能。
+
+#### ローカルPC（Windows タスクスケジューラ）
+
+```cmd
+C:\path\to\python note_auto_poster.py
+```
+
+をタスクスケジューラに登録。
+
+### 投稿記事の内容
+
+- **テーマ**: 投資（日本株・米国株・仮想通貨・FX）
+- **視点**: 20代女性OLならではの視点
+- **構成**: 無料部分 → 有料部分（1,000円）
+- **特徴**: リアルな失敗談、具体的な数字、心理描写
+
+### ログ・履歴
+
+- `note_poster.log` — 投稿実行ログ
+- `posted_articles.jsonl` — 投稿履歴（JSON Lines形式）
