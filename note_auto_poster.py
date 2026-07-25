@@ -252,6 +252,35 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
                 logger.info("下書き保存完了")
                 return True
 
+            # inspectモードでは、実際に公開せずに公開設定画面の構造だけを調べる。
+            # 最終的な「公開する」クリック以外を安全に検証するための検証用モード。
+            if PUBLISH_MODE == "inspect":
+                logger.info("公開設定画面の調査モードで実行中（公開はしない）")
+                await click_first(page, ['button:has-text("下書き保存")'], "下書き保存ボタン")
+                await page.wait_for_timeout(3000)
+                await click_first(
+                    page, ['button:has-text("公開に進む")', 'a:has-text("公開に進む")'], "公開に進むボタン"
+                )
+                await page.wait_for_timeout(4000)
+                await log_visible_controls(page, "公開設定画面")
+                await dump_page_state(page, "公開設定画面の中身")
+                try:
+                    await click_first(page, ['button:has-text("有料")', 'label:has-text("有料")'], "有料設定")
+                    await page.wait_for_timeout(2000)
+                    await log_visible_controls(page, "有料設定を選択した後")
+                    await dump_page_state(page, "有料設定を選択した後の中身")
+                    inputs = await page.evaluate(
+                        """() => Array.from(document.querySelectorAll('input')).map(el => ({
+                            type: el.type, name: el.name, placeholder: el.placeholder,
+                            value: el.value ? el.value.slice(0, 20) : ''
+                        }))"""
+                    )
+                    logger.info(f"[有料設定後] input要素一覧: {inputs}")
+                except Exception as e:
+                    logger.warning(f"有料設定の調査で例外: {str(e)}")
+                logger.info("調査完了（公開はしていません。下書きとして残っています）")
+                return True
+
             # 公開設定画面へ
             logger.info("公開設定画面へ遷移中...")
             await click_first(page, ['button:has-text("公開に進む")', 'a:has-text("公開に進む")'], "公開に進むボタン")
@@ -259,6 +288,8 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
             await log_visible_controls(page, "公開設定画面")
 
             # 価格設定（1,000円）
+            # 有料設定に失敗したまま公開すると意図せず無料公開されてしまい取り返しがつかないため、
+            # ここで失敗した場合は公開せずに中断する。
             logger.info("価格設定中...")
             try:
                 await click_first(page, ['button:has-text("有料")', 'label:has-text("有料")'], "有料設定")
@@ -269,7 +300,10 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
                 logger.info("価格を1000円に設定")
                 await page.wait_for_timeout(500)
             except Exception as price_e:
-                logger.warning(f"価格設定をスキップ（無料記事として投稿されます）: {str(price_e)}")
+                await dump_page_state(page, "価格設定失敗")
+                raise Exception(
+                    f"1,000円の有料設定ができませんでした。無料公開を避けるため公開を中断します: {str(price_e)}"
+                )
 
             # 公開
             logger.info("公開中...")
