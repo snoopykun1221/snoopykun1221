@@ -165,6 +165,14 @@ async def post_to_note(email: str, password: str, title: str, content: str) -> b
 
         except Exception as e:
             logger.error(f"投稿エラー: {str(e)}")
+            try:
+                await page.screenshot(path="note_error_screenshot.png", full_page=True)
+                html = await page.content()
+                with open("note_error_page.html", "w", encoding="utf-8") as f:
+                    f.write(html)
+                logger.error(f"デバッグ情報を保存しました（URL: {page.url}）")
+            except Exception as debug_e:
+                logger.error(f"デバッグ情報の保存にも失敗: {str(debug_e)}")
             return False
         finally:
             await browser.close()
