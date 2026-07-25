@@ -97,29 +97,45 @@ python fx_auto_follow.py
 
 20代OL投資家向けのnote記事を毎日自動生成して、noteに自動投稿します。
 
+note.comのログインページにはreCAPTCHAがあるため、ログイン自体を毎回自動化することはできません。
+そのため、**一度だけ手動でログインしてセッション（Cookie）を保存し、それを自動投稿スクリプトが使い回す**方式を採用しています。
+
 ### セットアップ
 
-#### 1. note ログイン情報を `.env` に追加
+#### 1. ログインセッションを作成（初回のみ・手動）
+
+```cmd
+pip install -r requirements.txt
+playwright install chromium
+python note_login_setup.py
+```
+
+ブラウザが開くので、表示された画面で実際にnoteへログインしてください（reCAPTCHAが出た場合もそのまま手動で完了）。
+ログイン後、ターミナルでEnterキーを押すと `note_session.json` が生成されます。
+
+#### 2. `.env` に APIキーを追加
 
 ```
 ANTHROPIC_API_KEY=your_api_key
-NOTE_EMAIL=your_note_email@example.com
-NOTE_PASSWORD=your_note_password
 ```
 
-#### 2. GitHub Secrets を設定（GitHub Actions使用時）
+#### 3. GitHub Secrets を設定（GitHub Actions使用時）
 
 GitHub リポジトリ設定 → Secrets に以下を追加：
 
 - `ANTHROPIC_API_KEY` — Claude APIキー
-- `NOTE_EMAIL` — noteのメールアドレス
-- `NOTE_PASSWORD` — noteのパスワード
+- `NOTE_SESSION_STATE` — `note_session.json` の内容をそのまま貼り付け
 
-#### 3. ローカルでテスト
+#### 4. ローカルでテスト
 
 ```cmd
 python note_auto_poster.py
 ```
+
+### セッションの更新
+
+`note_session.json` の有効期限が切れると投稿が失敗し、ログに再作成を促すメッセージが出ます。
+その場合は手順1をもう一度実行し、GitHub Secretsの `NOTE_SESSION_STATE` も新しい内容に更新してください。
 
 ### 自動実行設定
 
