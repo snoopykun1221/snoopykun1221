@@ -362,41 +362,13 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
 
             await log_visible_controls(page, "エディタ画面")
 
-            if PUBLISH_MODE == "draft":
-                logger.info("下書き保存モードで実行中")
-                await click_first(page, ['button:has-text("下書き保存")'], "下書き保存ボタン")
-                await page.wait_for_timeout(3000)
-                logger.info("下書き保存完了")
-                return True
+            # 公開処理で失敗しても記事が失われないよう、先に下書きとして保存する
+            await click_first(page, ['button:has-text("下書き保存")'], "下書き保存ボタン")
+            await page.wait_for_timeout(3000)
+            logger.info("下書き保存完了")
 
-            # inspectモードでは、実際に公開せずに公開設定画面の構造だけを調べる。
-            # 最終的な「公開する」クリック以外を安全に検証するための検証用モード。
-            if PUBLISH_MODE == "inspect":
-                logger.info("公開設定画面の調査モードで実行中（公開はしない）")
-                await click_first(page, ['button:has-text("下書き保存")'], "下書き保存ボタン")
-                await page.wait_for_timeout(3000)
-                await click_first(
-                    page, ['button:has-text("公開に進む")', 'a:has-text("公開に進む")'], "公開に進むボタン"
-                )
-                await page.wait_for_timeout(4000)
-                await log_visible_controls(page, "公開設定画面")
-                try:
-                    await set_paid_price(page)
-                    await log_visible_controls(page, "価格設定後")
-                    # 有料記事は「有料エリア設定」で本文の境界を決めないと投稿できない。
-                    # その画面の構造を調べる。
-                    await click_first(page, ['button:has-text("有料エリア設定")'], "有料エリア設定ボタン")
-                    await page.wait_for_timeout(4000)
-                    await set_paywall_boundary(page)
-                    await log_visible_controls(page, "境界設定後")
-                    publish_btn = page.locator('button:has-text("投稿する")').first
-                    enabled = await publish_btn.is_enabled()
-                    logger.info(f"投稿ボタンの状態: 有効={enabled}")
-                    await dump_page_state(page, "投稿直前の状態")
-                except Exception as e:
-                    logger.warning(f"有料設定の調査で例外: {str(e)}")
-                    await dump_page_state(page, "有料設定の調査で例外")
-                logger.info("調査完了（公開はしていません。下書きとして残っています）")
+            if PUBLISH_MODE == "draft":
+                logger.info("下書き保存モードのため、公開せずに終了します")
                 return True
 
             # 公開設定画面へ
