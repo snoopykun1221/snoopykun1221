@@ -51,3 +51,15 @@ jobs:
           name: posted-articles
           path: posted_articles.jsonl
           retention-days: 365
+          if-no-files-found: ignore
+
+      - name: 失敗時のデバッグ情報を保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: note-error-debug
+          path: |
+            note_error_screenshot.png
+            note_error_page.html
+          retention-days: 30
+          if-no-files-found: ignore
