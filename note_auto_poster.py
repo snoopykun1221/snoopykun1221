@@ -124,7 +124,22 @@ async def post_to_note(email: str, password: str, title: str, content: str) -> b
 
             # ホームページでログイン確認
             if "login" in page.url:
-                logger.error("ログイン失敗")
+                error_text = ""
+                try:
+                    error_text = await page.locator('body').inner_text()
+                except Exception:
+                    pass
+                logger.error(f"ログイン失敗（URL: {page.url}）")
+                if error_text:
+                    logger.error(f"ページ本文抜粋: {error_text[:500]}")
+                try:
+                    await page.screenshot(path="note_error_screenshot.png", full_page=True)
+                    html = await page.content()
+                    with open("note_error_page.html", "w", encoding="utf-8") as f:
+                        f.write(html)
+                    logger.error("デバッグ情報を保存しました")
+                except Exception as debug_e:
+                    logger.error(f"デバッグ情報の保存にも失敗: {str(debug_e)}")
                 return False
 
             logger.info("ログイン成功")
