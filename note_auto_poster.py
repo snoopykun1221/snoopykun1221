@@ -39,6 +39,8 @@ SYSTEM_PROMPT = """あなたは個別銘柄の解説記事を書く金融ライ�
 1. # タイトル（与えられたタイトルをそのまま使う）
 2. ## この銘柄の要点（無料部分）
    - 3〜5行で「どんな会社で、いま何が論点か」を提示
+   - タイトルが問いかけ形式の場合、記事全体でその問いに答える構成にする
+     （「展望は？」なら見通しの材料を、「何で稼いでいるのか」なら収益構造を厚く書く）
 3. ## 事業内容（無料部分）
    - 何で稼いでいるのか、収益の柱を具体的に
    - セグメント別の売上構成を表にする
@@ -96,8 +98,22 @@ def pick_stock_of_the_day(today: date) -> dict:
     return STOCKS[today.toordinal() % len(STOCKS)]
 
 
-def build_title(stock: dict) -> str:
-    return f"【{stock['ticker']}】{stock['name']}を解説｜事業内容・業績・リスクまで"
+# タイトルの問いかけ。読者が知りたいことを見出しにする。
+# 銘柄数(22)と互いに素な個数にして、銘柄と問いかけの組み合わせが長く一巡しないようにする。
+TITLE_PATTERNS = [
+    "{stock}、これからの展望は？",
+    "{stock}は今どうなっている？業績と株価を追う",
+    "{stock}の強みとリスクを整理する",
+    "{stock}は何で稼いでいるのか",
+    "{stock}、いま何が論点か",
+    "{stock}の決算から見えてきたこと",
+    "{stock}をゼロから理解する",
+]
+
+
+def build_title(stock: dict, today: date) -> str:
+    pattern = TITLE_PATTERNS[today.toordinal() % len(TITLE_PATTERNS)]
+    return f"【{stock['ticker']}】" + pattern.format(stock=stock["name"])
 
 
 async def generate_article(stock: dict, title: str) -> str:
@@ -511,8 +527,9 @@ async def main():
             return False
 
         # 今日の解説対象銘柄（日付でローテーション）
-        stock = pick_stock_of_the_day(date.today())
-        title = build_title(stock)
+        today = date.today()
+        stock = pick_stock_of_the_day(today)
+        title = build_title(stock, today)
         logger.info(f"本日の銘柄: {stock['name']}（{stock['ticker']}）")
 
         # 記事生成
