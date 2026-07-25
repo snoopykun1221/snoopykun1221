@@ -86,6 +86,38 @@ async def generate_article(topic: dict) -> str:
     logger.info(f"記事生成完了: {len(article_content)} 文字")
     return article_content
 
+# "draft" なら下書き保存で止める（検証用）、"publish" なら実際に公開する
+PUBLISH_MODE = os.environ.get("NOTE_PUBLISH_MODE", "publish").strip().lower()
+
+
+async def log_visible_controls(page, label: str) -> None:
+    """画面上のボタン/リンクの文言を一覧でログに出す。セレクタ特定のための診断用。"""
+    try:
+        texts = await page.evaluate(
+            """() => Array.from(document.querySelectorAll('button, a[role="button"], a'))
+                .map(el => (el.innerText || '').trim())
+                .filter(t => t && t.length < 30)
+                .slice(0, 40)"""
+        )
+        logger.info(f"[{label}] URL={page.url} 操作可能な要素: {texts}")
+    except Exception as e:
+        logger.warning(f"[{label}] 要素一覧の取得に失敗: {str(e)}")
+
+
+async def click_first(page, selectors: list, label: str, timeout: int = 8000):
+    """候補セレクタを順に試し、最初に見つかった要素をクリックする。"""
+    for selector in selectors:
+        element = page.locator(selector).first
+        try:
+            await element.wait_for(state="visible", timeout=timeout)
+            await element.click()
+            logger.info(f"{label}をクリック: {selector}")
+            return True
+        except Exception:
+            continue
+    raise Exception(f"{label}が見つかりませんでした（試したセレクタ: {selectors}）")
+
+
 async def post_to_note(session_file: str, title: str, content: str) -> bool:
     """Playwrightを使用してnoteに投稿（事前に保存したログインセッションを利用）"""
     async with async_playwright() as p:
@@ -148,43 +180,59 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
 
             # 本文入力
             logger.info("本文入力中...")
-            # noteのエディタは複数存在する可能性があるので、複数試行
-            content_selectors = [
-                'div[contenteditable="true"]',
-                'textarea[placeholder*="本文"], textarea[placeholder*="内容"]',
-                '.editor-content'
-            ]
+            body = page.locator('div[contenteditable="true"]').first
+            await body.wait_for(state="visible", timeout=15000)
+            await body.click()
+            await page.wait_for_timeout(300)
 
-            for selector in content_selectors:
-                elements = await page.query_selector_all(selector)
-                if elements and len(elements) > 1:  # 本文は通常2番目のエディタ
-                    await elements[1].click()
-                    await page.keyboard.type(content, delay=1)
-                    break
+            # ブロックエディタなので、行ごとに挿入してEnterで次のブロックへ進める。
+            # keyboard.type は1文字ずつで数千文字だと極端に遅いため insert_text を使う。
+            lines = content.split("\n")
+            for i, line in enumerate(lines):
+                if line:
+                    await page.keyboard.insert_text(line)
+                if i < len(lines) - 1:
+                    await page.keyboard.press("Enter")
+            logger.info(f"本文入力完了: {len(content)} 文字 / {len(lines)} 行")
+            await page.wait_for_timeout(1500)
 
-            await page.wait_for_timeout(1000)
+            await log_visible_controls(page, "エディタ画面")
+
+            if PUBLISH_MODE == "draft":
+                logger.info("下書き保存モードで実行中")
+                await click_first(page, ['button:has-text("下書き保存")'], "下書き保存ボタン")
+                await page.wait_for_timeout(3000)
+                logger.info("下書き保存完了")
+                return True
+
+            # 公開設定画面へ
+            logger.info("公開設定画面へ遷移中...")
+            await click_first(page, ['button:has-text("公開に進む")', 'a:has-text("公開に進む")'], "公開に進むボタン")
+            await page.wait_for_timeout(3000)
+            await log_visible_controls(page, "公開設定画面")
 
             # 価格設定（1,000円）
             logger.info("価格設定中...")
-            # 有料化ボタンを探す
-            paid_button = await page.query_selector('button:has-text("有料化")')
-            if paid_button:
-                await paid_button.click()
+            try:
+                await click_first(page, ['button:has-text("有料")', 'label:has-text("有料")'], "有料設定")
+                await page.wait_for_timeout(1000)
+                price_input = page.locator('input[type="number"], input[placeholder*="価格"], input[name*="price"]').first
+                await price_input.wait_for(state="visible", timeout=5000)
+                await price_input.fill("1000")
+                logger.info("価格を1000円に設定")
                 await page.wait_for_timeout(500)
+            except Exception as price_e:
+                logger.warning(f"価格設定をスキップ（無料記事として投稿されます）: {str(price_e)}")
 
-                # 価格入力
-                price_input = await page.query_selector('input[placeholder*="価格"], input[type="number"]')
-                if price_input:
-                    await price_input.fill("1000")
-
-            await page.wait_for_timeout(500)
-
-            # 投稿ボタンをクリック
-            logger.info("投稿中...")
-            publish_button = await page.query_selector('button:has-text("投稿")')
-            if publish_button:
-                await publish_button.click()
-                await page.wait_for_load_state("networkidle")
+            # 公開
+            logger.info("公開中...")
+            await click_first(
+                page,
+                ['button:has-text("公開する")', 'button:has-text("投稿する")', 'button:has-text("公開")'],
+                "公開ボタン",
+            )
+            await page.wait_for_timeout(5000)
+            await log_visible_controls(page, "公開後の画面")
 
             logger.info("投稿完了")
             return True

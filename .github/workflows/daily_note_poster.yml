@@ -5,6 +5,11 @@ on:
     # 毎日午前8時（UTC）に実行 = JST 17時
     - cron: '0 8 * * *'
   workflow_dispatch:
+  # 動作検証中の一時設定。開発ブランチへのpushで自動実行し、
+  # セレクタの調整を手動トリガーなしで繰り返せるようにする。完成後に削除する。
+  push:
+    branches:
+      - claude/note-1000yen-article-e4xxm2
 
 jobs:
   post-article:
@@ -37,6 +42,8 @@ jobs:
       - name: 記事を生成して投稿
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # 動作検証中は下書き保存で止める（誤って公開しないため）。完成後に削除する。
+          NOTE_PUBLISH_MODE: ${{ github.event_name == 'push' && 'draft' || 'publish' }}
         run: |
           python note_auto_poster.py
 
