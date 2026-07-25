@@ -94,9 +94,9 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
         page = await context.new_page()
 
         try:
-            # 新規投稿ページへ（ログイン済みセッションを利用するためログイン操作は不要）
-            logger.info("新規投稿ページにアクセス中...")
-            await page.goto("https://note.com/my/notes/create", wait_until="networkidle")
+            # noteトップページへ（ログイン済みセッションを利用するためログイン操作は不要）
+            logger.info("noteトップページにアクセス中...")
+            await page.goto("https://note.com/", wait_until="networkidle")
 
             if "login" in page.url:
                 logger.error(
@@ -114,9 +114,32 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
 
             logger.info("ログイン済みセッションを確認")
 
+            # 「投稿」ボタンから新規記事エディタへ遷移（editor.note.com にランダムIDで作成される）
+            logger.info("新規投稿ページへ遷移中...")
+            post_button_selectors = [
+                'a:has-text("投稿")',
+                'button:has-text("投稿")',
+            ]
+            clicked = False
+            for selector in post_button_selectors:
+                btn = page.locator(selector).first
+                try:
+                    await btn.wait_for(state="visible", timeout=5000)
+                    await btn.click()
+                    clicked = True
+                    logger.info(f"投稿ボタンをクリック: {selector}")
+                    break
+                except Exception:
+                    continue
+            if not clicked:
+                raise Exception("投稿ボタンが見つかりませんでした")
+
+            await page.wait_for_url("**editor.note.com/notes/**", timeout=15000)
+            logger.info(f"エディタページに遷移: {page.url}")
+
             # タイトル入力
             logger.info("タイトル入力中...")
-            await page.fill('input[placeholder*="タイトル"], textarea[placeholder*="タイトル"]', title)
+            await page.fill('textarea[placeholder*="タイトル"], input[placeholder*="タイトル"]', title)
             await page.wait_for_timeout(500)
 
             # 本文入力
