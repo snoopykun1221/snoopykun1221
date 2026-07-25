@@ -104,6 +104,22 @@ async def log_visible_controls(page, label: str) -> None:
         logger.warning(f"[{label}] 要素一覧の取得に失敗: {str(e)}")
 
 
+async def dump_page_state(page, label: str) -> None:
+    """ページが期待通り描画されないときに、原因特定のため中身をログに出す。"""
+    try:
+        html = await page.content()
+        body_text = ""
+        try:
+            body_text = (await page.locator("body").inner_text())[:400]
+        except Exception:
+            pass
+        logger.warning(
+            f"[{label}] URL={page.url} HTML長={len(html)} 本文抜粋={body_text!r}"
+        )
+    except Exception as e:
+        logger.warning(f"[{label}] ページ状態の取得に失敗: {str(e)}")
+
+
 async def click_first(page, selectors: list, label: str, timeout: int = 8000):
     """候補セレクタを順に試し、最初に見つかった要素をクリックする。"""
     for selector in selectors:
@@ -121,9 +137,25 @@ async def click_first(page, selectors: list, label: str, timeout: int = 8000):
 async def post_to_note(session_file: str, title: str, content: str) -> bool:
     """Playwrightを使用してnoteに投稿（事前に保存したログインセッションを利用）"""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(storage_state=session_file)
+        # noteのエディタはSPAで、ヘッドレス既定の環境だと起動しないことがあるため
+        # 実ブラウザに近い条件（UA・言語・画面サイズ）を明示する
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            storage_state=session_file,
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1440, "height": 900},
+            locale="ja-JP",
+            timezone_id="Asia/Tokyo",
+        )
         page = await context.new_page()
+        page.on("console", lambda msg: logger.info(f"[browser:{msg.type}] {msg.text[:200]}"))
+        page.on("pageerror", lambda err: logger.warning(f"[browser:pageerror] {str(err)[:300]}"))
 
         try:
             # noteトップページへ（ログイン済みセッションを利用するためログイン操作は不要）
@@ -169,12 +201,27 @@ async def post_to_note(session_file: str, title: str, content: str) -> bool:
             await page.wait_for_url("**editor.note.com/**", timeout=15000)
             logger.info(f"エディタページに遷移: {page.url}")
 
-            # タイトル入力（editor.note.com/new → /notes/{id}/edit/ へのクライアント側遷移を
-            # タイトル欄の出現待ちとして吸収する）
+            # editor.note.com はSPAで、/new から /notes/{id}/edit/ へクライアント側遷移する。
+            # 描画が完了しないことがあるため、リロードを挟んで再試行する。
+            title_selector = 'textarea[placeholder*="タイトル"], input[placeholder*="タイトル"]'
+            title_field = None
+            for attempt in range(1, 4):
+                try:
+                    candidate = page.locator(title_selector).first
+                    await candidate.wait_for(state="visible", timeout=20000)
+                    title_field = candidate
+                    logger.info(f"エディタ準備完了（{attempt}回目）: {page.url}")
+                    break
+                except Exception:
+                    await dump_page_state(page, f"エディタ描画待ち{attempt}回目")
+                    if attempt < 3:
+                        logger.warning(f"エディタが描画されないためリロードします（{attempt}回目）")
+                        await page.reload(wait_until="networkidle")
+                        await page.wait_for_timeout(3000)
+            if title_field is None:
+                raise Exception("エディタのタイトル入力欄が描画されませんでした")
+
             logger.info("タイトル入力中...")
-            title_field = page.locator('textarea[placeholder*="タイトル"], input[placeholder*="タイトル"]').first
-            await title_field.wait_for(state="visible", timeout=20000)
-            logger.info(f"エディタ準備完了: {page.url}")
             await title_field.fill(title)
             await page.wait_for_timeout(500)
 
