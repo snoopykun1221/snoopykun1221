@@ -99,9 +99,27 @@ async def post_to_note(email: str, password: str, title: str, content: str) -> b
 
             # ログイン
             logger.info("ログイン中...")
-            await page.fill('input[type="email"]', email)
+            email_selectors = [
+                'input[type="email"]',
+                'input[autocomplete="username"]',
+                'input[name="email"]',
+                'input[type="text"]',
+            ]
+            email_field = None
+            for selector in email_selectors:
+                candidate = page.locator(selector).first
+                try:
+                    await candidate.wait_for(state="visible", timeout=5000)
+                    email_field = candidate
+                    logger.info(f"メール入力欄を発見: {selector}")
+                    break
+                except Exception:
+                    continue
+            if email_field is None:
+                raise Exception("メール/note ID入力欄が見つかりませんでした")
+            await email_field.fill(email)
             await page.fill('input[type="password"]', password)
-            await page.click('button[type="submit"]')
+            await page.get_by_role("button", name="ログイン").click()
             await page.wait_for_load_state("networkidle")
 
             # ホームページでログイン確認
