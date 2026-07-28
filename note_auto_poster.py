@@ -514,7 +514,7 @@ async def set_paywall_boundary(page) -> None:
     logger.info(f"有料エリアの境界位置を確認: {result}")
 
 
-async def post_to_note(session_file: str, title: str, content: str) -> bool:
+async def post_to_note(session_file: str, stock: dict, title: str, content: str) -> bool:
     """Playwrightを使用してnoteに投稿（事前に保存したログインセッションを利用）"""
     async with async_playwright() as p:
         # noteのエディタはSPAで、ヘッドレス既定の環境だと起動しないことがあるため
@@ -701,7 +701,7 @@ async def main():
         content = await generate_article(stock, title)
 
         # noteに投稿
-        success = await post_to_note(SESSION_FILE, title, content)
+        success = await post_to_note(SESSION_FILE, stock, title, content)
 
         if success:
             logger.info(f"✅ 投稿成功: {title}")
