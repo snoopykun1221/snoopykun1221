@@ -194,13 +194,22 @@ async def generate_article(stock: dict, title: str) -> str:
     # web検索を伴う応答はサーバ側のループが上限に達すると pause_turn で一旦返るため、
     # 完了するまで同じ会話を送り直して再開させる。
     for attempt in range(5):
-        message = client.messages.create(
-            model="claude-opus-4-8",
-            max_tokens=8192,
-            system=SYSTEM_PROMPT,
-            tools=tools,
-            messages=messages,
-        )
+        try:
+            message = client.messages.create(
+                model="claude-opus-4-8",
+                max_tokens=8192,
+                system=SYSTEM_PROMPT,
+                tools=tools,
+                messages=messages,
+            )
+        except anthropic.BadRequestError as e:
+            # 残高切れは設定ミスと区別がつきにくいため、対処法まで含めて明示する
+            if "credit balance" in str(e):
+                raise Exception(
+                    "Anthropic APIの残高が不足しているため記事を生成できません。"
+                    "console.anthropic.com の Plans & Billing でクレジットを購入してください。"
+                ) from e
+            raise
         if message.stop_reason != "pause_turn":
             break
         logger.info(f"web検索が継続中のため再開します（{attempt + 1}回目）")
