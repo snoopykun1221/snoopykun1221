@@ -19,10 +19,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 有料記事の販売価格（円）。noteの最低価格は100円。
+ARTICLE_PRICE = "300"
+
 SYSTEM_PROMPT = """あなたは、noteで有料の個別株記事を書いて実際に読まれている個人投資家です。
 証券会社のレポートのような硬い文章ではなく、「投資が好きな人が、自分の頭で考えたことを
 友達に話すように書いた記事」を書いてください。読者は、教科書的な説明ではなく
-「で、この株どう見てるの？」という書き手の目線を求めて1,000円を払います。
+「で、この株どう見てるの？」という書き手の目線を求めてお金を払います。
 
 【語り口（ここが記事の価値です）】
 - 一人称は「自分」。ですます調で、話しかけるように書く
@@ -173,7 +176,7 @@ async def generate_article(stock: dict, title: str) -> str:
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     today = date.today().strftime("%Y年%m月%d日")
-    user_prompt = f"""今日は{today}です。以下の銘柄について、note有料記事（1,000円）を書いてください。
+    user_prompt = f"""今日は{today}です。以下の銘柄について、note有料記事（{ARTICLE_PRICE}円）を書いてください。
 
 銘柄：{stock['name']}（{stock['market']}：{stock['ticker']}）
 記事タイトル：{title}
@@ -391,7 +394,7 @@ async def click_first(page, selectors: list, label: str, timeout: int = 8000):
     raise Exception(f"{label}が見つかりませんでした（試したセレクタ: {selectors}）")
 
 
-async def set_paid_price(page, price: str = "1000") -> None:
+async def set_paid_price(page, price: str = ARTICLE_PRICE) -> None:
     """公開設定画面で記事タイプを有料にし、価格を設定する。
 
     実機調査の結果、記事タイプはラジオ input[name="is_paid"]、
@@ -856,16 +859,17 @@ async def post_to_note(session_file: str, stock: dict, title: str, content: str)
             await page.wait_for_timeout(3000)
             await log_visible_controls(page, "公開設定画面")
 
-            # 価格設定（1,000円）
+            # 価格設定
             # 有料設定に失敗したまま公開すると意図せず無料公開されてしまい取り返しがつかないため、
             # ここで失敗した場合は公開せずに中断する。
             logger.info("価格設定中...")
             try:
-                await set_paid_price(page, "1000")
+                await set_paid_price(page, ARTICLE_PRICE)
             except Exception as price_e:
                 await dump_page_state(page, "価格設定失敗")
                 raise Exception(
-                    f"1,000円の有料設定ができませんでした。無料公開を避けるため公開を中断します: {str(price_e)}"
+                    f"{ARTICLE_PRICE}円の有料設定ができませんでした。"
+                    f"無料公開を避けるため公開を中断します: {str(price_e)}"
                 )
 
             # 有料記事は本文のどこから有料かを指定しないと投稿できない
