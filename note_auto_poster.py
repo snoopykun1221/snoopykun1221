@@ -203,6 +203,8 @@ async def generate_article(stock: dict, title: str) -> str:
 
     messages = [{"role": "user", "content": user_prompt}]
     tools = [{"type": "web_search_20260209", "name": "web_search"}]
+    total_input = 0
+    total_output = 0
 
     # web検索を伴う応答はサーバ側のループが上限に達すると pause_turn で一旦返るため、
     # 完了するまで同じ会話を送り直して再開させる。
@@ -215,6 +217,8 @@ async def generate_article(stock: dict, title: str) -> str:
                 tools=tools,
                 messages=messages,
             )
+            total_input += message.usage.input_tokens
+            total_output += message.usage.output_tokens
         except anthropic.BadRequestError as e:
             # 残高切れは設定ミスと区別がつきにくいため、対処法まで含めて明示する
             if "credit balance" in str(e):
@@ -242,7 +246,14 @@ async def generate_article(stock: dict, title: str) -> str:
         raise Exception(f"記事本文が生成されませんでした（stop_reason={message.stop_reason}）")
 
     searches = sum(1 for block in message.content if block.type == "server_tool_use")
-    logger.info(f"記事生成完了: {len(article_content)} 文字 / web検索 {searches} 回")
+    # 1本あたりいくらかかるのかが分からないと、クレジットをいくら買えばよいか判断できない。
+    # 単価は claude-opus-4-8（入力$5/100万・出力$25/100万）とweb検索（$10/1,000回）。
+    cost = total_input / 1e6 * 5 + total_output / 1e6 * 25 + searches * 0.01
+    logger.info(
+        f"記事生成完了: {len(article_content)} 文字 / web検索 {searches} 回 / "
+        f"入力 {total_input:,} トークン・出力 {total_output:,} トークン / "
+        f"概算コスト ${cost:.2f}"
+    )
     return sanitize_article(article_content, title)
 
 
