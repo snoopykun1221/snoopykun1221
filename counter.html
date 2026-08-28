@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>カウンター</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1.5rem;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 0.5rem;
+    text-shadow: 0 0 20px rgba(255,255,255,0.4);
+  }
+
+  .total {
+    font-size: 0.95rem;
+    color: #aaa;
+    margin-bottom: 2rem;
+  }
+  .total strong { color: #fff; font-size: 1.2rem; }
+
+  .counters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    justify-content: center;
+    width: 100%;
+    max-width: 720px;
+  }
+
+  .counter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.8rem;
+    flex: 1 1 180px;
+    max-width: 220px;
+  }
+
+  .count-btn {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-height: 200px;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.08s, box-shadow 0.08s, filter 0.08s;
+    touch-action: manipulation;
+  }
+  .count-btn:active {
+    transform: scale(0.95);
+    filter: brightness(1.15);
+  }
+
+  .count-btn .label {
+    font-size: 1.15rem;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+  }
+  .count-btn .count {
+    font-size: 3rem;
+    font-weight: bold;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn-lost {
+    background: linear-gradient(145deg, #e53e3e, #9b2c2c);
+    box-shadow: 0 6px 20px rgba(229,62,62,0.35);
+  }
+  .btn-form {
+    background: linear-gradient(145deg, #3182ce, #2a4d8f);
+    box-shadow: 0 6px 20px rgba(49,130,206,0.35);
+  }
+  .btn-noanswer {
+    background: linear-gradient(145deg, #718096, #4a5568);
+    box-shadow: 0 6px 20px rgba(113,128,150,0.35);
+  }
+
+  .minus-btn {
+    background: transparent;
+    border: 1px solid #555;
+    color: #bbb;
+    border-radius: 8px;
+    padding: 0.35rem 1.2rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .minus-btn:hover { background: #222; color: #fff; }
+  .minus-btn:active { background: #333; }
+
+  .reset-btn {
+    margin-top: 2.5rem;
+    background: transparent;
+    border: 1px solid #666;
+    color: #999;
+    border-radius: 10px;
+    padding: 0.6rem 2rem;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+  .reset-btn:hover { background: #2a1515; color: #f88; border-color: #a55; }
+
+  /* Pop animation when count changes */
+  @keyframes pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+  .count.pop { animation: pop 0.2s ease; }
+</style>
+</head>
+<body>
+
+<h1>コールカウンター</h1>
+<p class="total">合計 <strong id="total">0</strong> 件</p>
+
+<div class="counters">
+  <div class="counter">
+    <button class="count-btn btn-lost" data-key="lost">
+      <span class="label">失注</span>
+      <span class="count" id="count-lost">0</span>
+    </button>
+    <button class="minus-btn" data-key="lost">−1</button>
+  </div>
+
+  <div class="counter">
+    <button class="count-btn btn-form" data-key="form">
+      <span class="label">フォーム</span>
+      <span class="count" id="count-form">0</span>
+    </button>
+    <button class="minus-btn" data-key="form">−1</button>
+  </div>
+
+  <div class="counter">
+    <button class="count-btn btn-noanswer" data-key="noanswer">
+      <span class="label">繋がらない等</span>
+      <span class="count" id="count-noanswer">0</span>
+    </button>
+    <button class="minus-btn" data-key="noanswer">−1</button>
+  </div>
+</div>
+
+<button class="reset-btn" id="reset">リセット</button>
+
+<script>
+  const STORAGE_KEY = 'call-counter-counts';
+  const KEYS = ['lost', 'form', 'noanswer'];
+
+  let counts = { lost: 0, form: 0, noanswer: 0 };
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved) KEYS.forEach(k => { counts[k] = Number(saved[k]) || 0; });
+  } catch (e) { /* 保存データが壊れていたら初期値のまま */ }
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(counts));
+  }
+
+  function render(animateKey) {
+    KEYS.forEach(k => {
+      const el = document.getElementById('count-' + k);
+      el.textContent = counts[k];
+      if (k === animateKey) {
+        el.classList.remove('pop');
+        void el.offsetWidth; // アニメーションを再トリガー
+        el.classList.add('pop');
+      }
+    });
+    document.getElementById('total').textContent = KEYS.reduce((s, k) => s + counts[k], 0);
+  }
+
+  document.querySelectorAll('.count-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      counts[key]++;
+      save();
+      render(key);
+    });
+  });
+
+  document.querySelectorAll('.minus-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      if (counts[key] > 0) {
+        counts[key]--;
+        save();
+        render(key);
+      }
+    });
+  });
+
+  document.getElementById('reset').addEventListener('click', () => {
+    if (confirm('すべてのカウントをリセットしますか？')) {
+      KEYS.forEach(k => { counts[k] = 0; });
+      save();
+      render();
+    }
+  });
+
+  render();
+</script>
+
+</body>
+</html>
